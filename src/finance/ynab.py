@@ -1,8 +1,4 @@
 import requests
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
 
 def get_plans(token: str) -> list:
     response = requests.get(
@@ -33,7 +29,7 @@ def select_plan(plans: list[dict], planname: str | None = None, planid: str | No
         return plan_id
     raise ValueError(f"Found no matching plan in plans for planname: {planname} and planid: {planid}")
 
-def get_accounts(plan_id: str, token: str):
+def get_accounts(plan_id: str, token: str) -> dict:
     resp = requests.get(
         url = f"https://api.ynab.com/v1/plans/{plan_id}/accounts",
         headers={"Authorization": f"Bearer {token}"},
@@ -49,15 +45,26 @@ def get_accounts(plan_id: str, token: str):
     
     return output
 
-        
+def get_month_categories(token: str, plan_id: str, month: str) -> dict:
 
-token = os.getenv("YNAB_TOKEN")
-if token is None:
-    print("token is None")
-
-# plans = get_plans(token)
-# selected = select_plan(plans, planid="1")
-# print(selected)
-
-accs = get_accounts(plan_id="fe067808-aabc-4d5a-a6f2-9ae61c6213cc", token=token)
-print(accs)
+    resp = requests.get(
+        url= f"https://api.ynab.com/v1/plans/{plan_id}/months/{month}",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    all_categories = resp.json()["data"]["month"]["categories"]
+    
+    categories_resolved = {}
+    for cat in all_categories:
+        cat_id, name, category_group_name = cat["id"], cat["name"], cat["category_group_name"]
+        activity, budgeted_amount, balance, deleted = cat["activity"], cat["budgeted"], cat["balance"], cat["deleted"]
+        categories_resolved[cat_id] = {
+            "name": name, 
+            "category_group_name": category_group_name,
+            "activity": activity / 1000,
+            "budgeted": budgeted_amount / 1000,
+            "balance": balance / 1000,
+            "deleted": deleted,
+            }
+    return categories_resolved
