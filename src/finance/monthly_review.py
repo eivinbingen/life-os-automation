@@ -5,6 +5,7 @@ from ynab import get_plans, select_plan, get_accounts, get_month_categories
 from datetime import date, timedelta
 from sheets import generate_column_mapping, create_sheets_service, get_range_values, find_header_row, parse_number, CREDENTIALS_FILE, format_sheet_month
 from googleapiclient.discovery import build
+import argparse
 
 load_dotenv()
 
@@ -148,7 +149,18 @@ def compare_forecast_actuals(forecast: dict[str, float], actuals: dict[str, floa
 
     return comparison
 
+def parse_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Review YNAB actuals against the monthly forecast."
+    )
 
+    parser.add_argument(
+        "month",
+        nargs="?",
+        help="Month to review in YYYY-MM-01 format.",
+    )
+
+    return parser.parse_args()
 
 def get_month() -> str:
     first_day_of_month = date.today().replace(day=1)
@@ -203,4 +215,5 @@ def main(month: str | None = None) -> None:
     run_monthly_review(month=month, token=token)
 
 if __name__ == "__main__":
-    main()
+    args = parse_arguments()
+    main(month=args.month)
