@@ -1,16 +1,15 @@
 CATEGORY_MAPPINGS = {
-    "Shared fixed": ["e6fed5fb-8670-4ffb-a63a-272d607d69bb", "13596d5b-8551-4f38-b2c6-71858c126065", "5b0a12ef-bd78-4291-a99f-1bbe7a8bcb36", "2dedc1c9-bd57-4605-9095-da055509f5ed", "0c677ed1-0942-47af-8357-e7ddc28a4f61", "19de7f51-cdaa-493a-b2e9-597636df0dea", "ad51c23f-f899-4900-91e4-cf2d46797d8b", "efb16f1e-025b-43d9-adbf-235d46589fa4", "79be06a2-d22e-4ee6-8a3e-7fec10f5345a"],
-    "Shared everyday": ["5087fe73-47e4-4f98-b434-1b0797f80b55", "e9ffb703-b9d5-46b7-8c0d-417f1cfa4754", "21241f6e-6151-4604-9952-4733f8e60574", "a1c64d46-0349-44c1-8241-628a389b8531", "393c18db-6bdd-4753-8e00-ebe195ba92c8", "6d83206e-0437-48b0-a4b0-b24967aa47bd", "7165683c-7625-4f58-bedb-0083fd17cdea"],
-    "Eivin personal": ["171ab297-3873-4729-a903-7e8dec1d8388", "9554da6c-648f-4f0f-bb47-4f51349672d4", "ad0f76d2-8a2f-42bb-b1ba-6098e701290d"],
-    "Maren personal": ["838ddf73-2bb6-44ac-85d3-a6e8bd185410", "1d177832-980a-4fb8-9f13-95d68404990f", "51861eec-2e60-47d5-ae2f-97ae4b13d3af", "f44004bf-48e1-4bc7-b781-da7bb9f503d6", "3e1f103d-82d0-4ee1-b4cc-b609fafa40cf"],
-    "Zurich costs": ["55e86a57-1656-4908-b650-91a3b5dead3f", "ab97c3ab-168b-4c01-8baf-ee5b408cbda6", "4ad4fab6-28ad-4e17-b57d-ae93eb2b7bc2", "fd787ed3-c2b7-41ad-9ab2-75b3397e0009"],
-    "One-off expenses": ["162466a8-2477-4ac3-859b-62ef1df6143d", "84aa6e74-69b5-456e-be1c-d610be6acd40", "b1b2653b-a540-47b9-8e1b-bd69a3c110eb", "a157ce7c-c7e7-43eb-a8af-bf208f3e004b", "d8680aae-bcf8-42ea-83bf-e8e996de84c5", "0bca9322-fe65-4571-8b04-9c4e8f4d75c8", "424448ee-6c16-4016-84c8-200e71a635e0", "18257175-1182-4ab4-9fe2-389398639dfb"]
+    "shared fixed contribution": ["90a5bd12-b3d2-4fd0-bde3-893a62d97c6d"],
+    "share everyday contribution": [],
+    "personal fixed spending": ["f1de2c9a-9ca2-448b-98e4-5d483e90658b","aac82d8d-89e8-4b8b-9057-22240fa3539b", "34e1f78c-b323-424f-ac8e-43a13fc43748"],
+    "zürich housing": [],
+    "personal everyday spending": ["4b54d55d-e8c7-4442-92a8-e723f6928463", "7adb6c00-5db3-4364-af4d-eeafcd1e7608", "4c0925b4-987c-4808-b0a5-f28c4cda25d8", "04ebb144-bcc9-41bb-8ce2-f89b680a6154", "d400eb1f-12ac-4b0d-9fcb-96ecb15f15ee"],
+    "travel & one-offs": ["3f644c83-dad6-45f8-ac09-80c408fa0b08", "9b86b840-d4dd-4b33-971a-7b06b2ce6942", "83659eec-e08e-4550-9a60-22d560fce803"]
 }
 
 EXCLUDED_CATEGORIES = {
-    "08dfefb0-7406-484b-b7b6-2c6b16a0c801": "Uncategorized",
-    "c4fd584a-f595-40eb-96ed-23bc79fbec48": "Inflow",
-    "79968ffc-027a-4ec4-bc60-658e8a6be011": "Fremtidig leilighet",
-    "684b5d39-5415-42e7-b8fb-627d4349161d": "Emergency fund",
-    "216edb50-7573-4430-86e7-202e727b31c6": "Langtidsinvestering"
+    "7af38ec2-d0a6-4369-82a7-000851be9a73": "Uncategorized",
+    "495715b7-6666-4877-b908-02d44bbcb8cb": "Inflow",
+    "b2932953-2d80-4a9e-93a6-9175f4d5d45b": "Emergency fund",
+    "df280687-f1ff-4be4-889e-e71976a142c6": "Long term investement"
 }

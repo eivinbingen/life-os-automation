@@ -3,6 +3,8 @@ import os
 from category_mappings import CATEGORY_MAPPINGS, EXCLUDED_CATEGORIES
 from ynab import get_plans, select_plan, get_accounts, get_month_categories
 from datetime import date, timedelta
+from sheets import generate_column_mapping, create_sheets_service, get_range_values, find_header_row, parse_number, CREDENTIALS_FILE
+from googleapiclient.discovery import build
 
 load_dotenv()
 
@@ -112,8 +114,41 @@ def build_monthly_actuals(
         actuals[column] = cat_spend
         tot_spend += cat_spend
     
-    actuals["Total spent"] = tot_spend
+    actuals["total"] = tot_spend
     return actuals
+
+def build_monthly_forecast(service: build, spreadsheet_id: str, range_name: str, month: str) -> dict[str, float]:
+    forecast = {}
+    range_values = get_range_values(service, spreadsheet_id, range_name)
+
+    mapping = generate_column_mapping(rows = range_values)
+    row_index, header_row = find_header_row(rows=range_values, header_start=month)
+    tot_estimate = 0
+    for cat, col in mapping.items():
+        if cat.lower() not in ["month", "total income"]:
+            val = (
+                header_row[col]
+                if col < len(header_row)
+                else ""
+            )
+
+            val_num = parse_number(val)
+            forecast[cat] = val_num
+            tot_estimate += val_num
+    forecast["Total"] = tot_estimate
+    return forecast
+
+def compare_forecast_actuals(forecast: dict[str, float], actuals: dict[str, float]) -> dict[str, float]:
+    comparison = {}
+
+    for cat, estimate in forecast.items():
+
+        actual = actuals[cat.lower()]
+        comparison[cat] = estimate - actual
+
+    return comparison
+
+
 
 def get_month() -> str:
     first_day_of_month = date.today().replace(day=1)
@@ -121,12 +156,16 @@ def get_month() -> str:
 
 def run_monthly_review(month: str, token: str) -> None:
     plans = get_plans(token)
-    plan = select_plan(plans, planname="Schmoney")
+    plan = select_plan(plans, planname="Eivin - Personal")
     accounts = get_accounts(plan_id=plan, token=token)
     categories = get_month_categories(token, plan, month)
+    service = create_sheets_service(CREDENTIALS_FILE)
     if not validate_category_mapping(categories=categories, category_mapping=CATEGORY_MAPPINGS, excluded_categories=EXCLUDED_CATEGORIES):
         raise ("Cannot calculate actuals with an invalid mapping")
     monthly_actuals = build_monthly_actuals(categories=categories, category_mapping=CATEGORY_MAPPINGS)
+    monthly_forecast = build_monthly_forecast(service, spreadsheet_id=os.getenv("GOOGLE_SPREADSHEET_ID"), range_name="'Personal forecast'!A1:W20", month="sep. 2026")
+
+    comparison = compare_forecast_actuals(monthly_forecast, monthly_actuals)
 
     print("Account status: ")
     print("---------------------------------------")
@@ -140,6 +179,17 @@ def run_monthly_review(month: str, token: str) -> None:
     for col, spend in monthly_actuals.items():
         print(f"{col} - Actual aggregated spending: {spend}")
     
+    print("\n\n")
+    print("Monthly Forecast: ")
+    print("--------------------------------------")
+    for col, estimate in monthly_forecast.items():
+        print(f"{col} - Estimated spending: {estimate}")
+
+    print("\n\n")
+    print("Monthly Comparison: ")
+    print("--------------------------------------")
+    for col, val in comparison.items():
+        print(f"{col} - +/-: {val}")
 
 def main(month: str | None = None) -> None:
     token = os.getenv("YNAB_TOKEN")

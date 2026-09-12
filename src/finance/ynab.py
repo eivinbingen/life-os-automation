@@ -7,7 +7,6 @@ def get_plans(token: str) -> list:
         timeout=10
     )
     response.raise_for_status()
-   
     return response.json()["data"]["plans"]
 
 def select_plan(plans: list[dict], planname: str | None = None, planid: str | None = None) -> str:
@@ -68,3 +67,5 @@ def get_month_categories(token: str, plan_id: str, month: str) -> dict:
             "deleted": deleted,
             }
     return categories_resolved
+
+
