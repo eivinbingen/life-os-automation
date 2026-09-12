@@ -3,7 +3,7 @@ import os
 from category_mappings import CATEGORY_MAPPINGS, EXCLUDED_CATEGORIES
 from ynab import get_plans, select_plan, get_accounts, get_month_categories
 from datetime import date, timedelta
-from sheets import generate_column_mapping, create_sheets_service, get_range_values, find_header_row, parse_number, CREDENTIALS_FILE
+from sheets import generate_column_mapping, create_sheets_service, get_range_values, find_header_row, parse_number, CREDENTIALS_FILE, format_sheet_month
 from googleapiclient.discovery import build
 
 load_dotenv()
@@ -161,9 +161,11 @@ def run_monthly_review(month: str, token: str) -> None:
     categories = get_month_categories(token, plan, month)
     service = create_sheets_service(CREDENTIALS_FILE)
     if not validate_category_mapping(categories=categories, category_mapping=CATEGORY_MAPPINGS, excluded_categories=EXCLUDED_CATEGORIES):
-        raise ("Cannot calculate actuals with an invalid mapping")
+        raise ValueError(
+            "Cannot calculate actuals with an invalid mapping"
+            )
     monthly_actuals = build_monthly_actuals(categories=categories, category_mapping=CATEGORY_MAPPINGS)
-    monthly_forecast = build_monthly_forecast(service, spreadsheet_id=os.getenv("GOOGLE_SPREADSHEET_ID"), range_name="'Personal forecast'!A1:W20", month="sep. 2026")
+    monthly_forecast = build_monthly_forecast(service, spreadsheet_id=os.getenv("GOOGLE_SPREADSHEET_ID"), range_name="'Personal forecast'!A1:W20", month=format_sheet_month(month))
 
     comparison = compare_forecast_actuals(monthly_forecast, monthly_actuals)
 

@@ -1,3 +1,4 @@
+from datetime import date
 import requests
 import os
 from dotenv import load_dotenv
@@ -60,22 +61,25 @@ def generate_column_mapping(rows: list[list]) -> dict[str, int]:
             out[header] = header_index
     return out
 
-def parse_number(value: str) -> float:
+def parse_number(value: str | int | float | None) -> float:
+    if value in ("", None):
+        return 0.0
+
+    if isinstance(value, (int, float)):
+        return float(value)
+
     normalized = (
-        value.replace("\xa0", "").replace("kr", "").strip()
+        value
+        .replace("\xa0", "")
+        .replace("kr", "")
+        .replace(",", "")
+        .strip()
     )
 
-    if normalized == "":
-        normalized = 0
+    return float(normalized) if normalized else 0.0
 
-    return float(normalized)
+def format_sheet_month(month: str) -> str:
+    parsed_month = date.fromisoformat(month)
+    return f"{parsed_month:%b} {parsed_month:%Y}"
 
 
-service = create_sheets_service(CREDENTIALS_FILE)
-
-range_values = get_range_values(service, spreadsheet_id=spreadsheet_id, range_name=range_name)
-
-header_row = find_header_row(range_values, "sep. 2026")
-
-col_mappings = generate_column_mapping(range_values)
-print(col_mappings)
