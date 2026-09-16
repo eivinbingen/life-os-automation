@@ -1,7 +1,9 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
+from googleapiclient.errors import HttpError
 
 from life_os.models.calendar import CalendarEvent
+from life_os.integrations.calendar_auth import get_calendar_service
 
 
 def _parse_timed_datetime(info: dict, local_tz: ZoneInfo) -> datetime:
@@ -38,12 +40,35 @@ def create_calendar_event(google_event: dict) -> CalendarEvent:
         all_day=all_day,
     )
 
+def get_events_for_day(service, day: date) -> list[CalendarEvent]:
+    start_bound = datetime.combine(
+        day, time.min, tzinfo=ZoneInfo("Europe/Zurich")
+    )
+    next_day = day + timedelta(days=1)
+    end_bound = datetime.combine(
+        next_day, time.min, tzinfo=ZoneInfo("Europe/Zurich")
+    )
+
+    try:
+        response = service.events().list(
+            calendarId="primary", 
+            timeMin=start_bound.isoformat(), 
+            timeMax=end_bound.isoformat(), 
+            singleEvents=True, 
+            orderBy="startTime"
+            ).execute()
+    except HttpError as e:
+        raise e
+
+    events = []
+    for item in response.get("items", []):
+        e = create_calendar_event(item)
+        events.append(e)
+    return events
 
 if __name__ == "__main__":
-    google_event = {
-        "id": "1",
-        "summary": "Test event",
-        "start": {"dateTime": "2026-09-16T10:00:00", "timeZone": "Europe/Zurich"},
-        "end": {"dateTime": "2026-09-16T12:00:00", "timeZone": "Europe/Zurich"},
-    }
-    print(create_calendar_event(google_event))
+    service = get_calendar_service()
+    today = date(2026, 9, 16)
+    e = get_events_for_day(service, day=today)
+    for event in e:
+        print(event.title) 
