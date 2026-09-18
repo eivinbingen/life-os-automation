@@ -1,8 +1,10 @@
 from datetime import date, datetime
-from life_os.models.notion import Task
 from os import getenv
+
 import requests
 from dotenv import load_dotenv
+
+from life_os.models.notion import Task
 
 
 def create_task(notion_page: dict) -> Task:
@@ -31,14 +33,8 @@ def create_task(notion_page: dict) -> Task:
     else:
         due = date.fromisoformat(due_str)
 
-    return Task(
-        id=id,
-        name=name,
-        done=done,
-        scheduled=scheduled,
-        due=due,
-        project_id=project_id
-    )
+    return Task(id=id, name=name, done=done, scheduled=scheduled, due=due, project_id=project_id)
+
 
 def fetch_tasks_for_day(token: str, data_source_id: str, day: date, page_size: int) -> list[Task]:
     body = {
@@ -63,9 +59,9 @@ def fetch_tasks_for_day(token: str, data_source_id: str, day: date, page_size: i
             headers={
                 "Authorization": f"Bearer {token}",
                 "Notion-Version": "2026-03-11",
-                "Content-Type": "application/json"
-                },
-            json=body
+                "Content-Type": "application/json",
+            },
+            json=body,
         )
 
         res.raise_for_status()
@@ -86,46 +82,25 @@ if __name__ == "__main__":
     notion_task = {
         "id": "task-page-123",
         "properties": {
-            "Name": {
-            "type": "title",
-            "title": [
-                {"plain_text": "Read chapter 4"}
-            ]
-            },
-            "Done": {
-            "type": "checkbox",
-            "checkbox": False
-            },
+            "Name": {"type": "title", "title": [{"plain_text": "Read chapter 4"}]},
+            "Done": {"type": "checkbox", "checkbox": False},
             "Scheduled": {
-            "type": "date",
-            "date": {
-                "start": "2026-09-16T10:00:00+02:00",
-                "end": None,
-                "time_zone": None
-            }
+                "type": "date",
+                "date": {"start": "2026-09-16T10:00:00+02:00", "end": None, "time_zone": None},
             },
             "Due": {
-            "type": "date",
-            "date": {
-                "start": "2026-09-18",
-                "end": None,
-                "time_zone": None
-            }
+                "type": "date",
+                "date": {"start": "2026-09-18", "end": None, "time_zone": None},
             },
-            "Project": {
-            "type": "relation",
-            "relation": [
-                {"id": "project-page-456"}
-            ]
-            }
-        }
-        }
-    
+            "Project": {"type": "relation", "relation": [{"id": "project-page-456"}]},
+        },
+    }
+
     token = getenv("NOTION_TOKEN")
     data_source_id = getenv("NOTION_TASKS_DATA_SOURCE_ID")
     page_size = 5
 
-    tasks = fetch_tasks_for_day(token=token, data_source_id=data_source_id, day=date.today(), page_size=page_size)
+    tasks = fetch_tasks_for_day(
+        token=token, data_source_id=data_source_id, day=date.today(), page_size=page_size
+    )
     print(tasks)
-
-

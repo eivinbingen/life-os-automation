@@ -1,16 +1,17 @@
 import os.path
+from pathlib import Path
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 TOKEN_FILE = PROJECT_ROOT / "calendar_token.json"
 CLIENT_FILE = PROJECT_ROOT / "calendar_oauth_client.json"
 # If modifying these scopes, delete the file token.json.
 SCOPES = ["https://www.googleapis.com/auth/calendar.events.readonly"]
+
 
 def get_calendar_service():
     creds = None
@@ -21,16 +22,10 @@ def get_calendar_service():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-            CLIENT_FILE, SCOPES
-            )
+            flow = InstalledAppFlow.from_client_secrets_file(CLIENT_FILE, SCOPES)
             creds = flow.run_local_server(port=0)
         # Save the credentials for the next run
         with open(TOKEN_FILE, "w") as token:
             token.write(creds.to_json())
-    
+
     return build("calendar", "v3", credentials=creds)
-    
-
-
-    
