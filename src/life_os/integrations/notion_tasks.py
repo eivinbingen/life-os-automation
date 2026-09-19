@@ -76,6 +76,29 @@ def fetch_tasks_for_day(token: str, data_source_id: str, day: date, page_size: i
 
     return tasks
 
+def set_task_done(token: str, task_id: str, done: bool) -> bool:
+
+    body = {
+    "properties": {
+        "Done": {
+            "checkbox": done
+            }
+        }
+    }
+
+    res = requests.patch(
+        url=f"https://api.notion.com/v1/pages/{task_id}",
+        headers={
+                "Authorization": f"Bearer {token}",
+                "Notion-Version": "2026-03-11",
+                "Content-Type": "application/json",
+            },
+        json=body
+    )
+
+    res.raise_for_status()
+    return True
+
 
 if __name__ == "__main__":
     load_dotenv()
@@ -100,7 +123,3 @@ if __name__ == "__main__":
     data_source_id = getenv("NOTION_TASKS_DATA_SOURCE_ID")
     page_size = 5
 
-    tasks = fetch_tasks_for_day(
-        token=token, data_source_id=data_source_id, day=date.today(), page_size=page_size
-    )
-    print(tasks)

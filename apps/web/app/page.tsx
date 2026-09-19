@@ -1,5 +1,8 @@
 import { connection } from "next/server";
 
+import { TaskCheckbox } from "./task-checkbox";
+import { OpenTaskCount, TaskCompletionProvider } from "./task-completion";
+
 type CalendarEvent = {
   id: string;
   title: string;
@@ -85,14 +88,7 @@ function TaskList({
     <ul className="task-list">
       {tasks.map((task) => (
         <li className="task-row" key={task.id}>
-          <input
-            aria-label={`${task.name} (read only)`}
-            checked={task.done}
-            className="task-checkbox"
-            disabled
-            title="Task completion is not available yet"
-            type="checkbox"
-          />
+          <TaskCheckbox taskId={task.id} taskName={task.name} />
           <div className="task-copy">
             <span className="task-name">{task.name}</span>
             {task[dateField] && (
@@ -110,7 +106,13 @@ function TaskList({
 
 export default async function Home() {
   await connection();
-  const response = await fetch("http://127.0.0.1:8000/today", { cache: "no-store" });
+  const apiUrl = process.env.LIFE_OS_API_URL;
+
+  if (!apiUrl) {
+    throw new Error("LIFE_OS_API_URL is not configured");
+  }
+
+  const response = await fetch(`${apiUrl}/today`, { cache: "no-store" });
 
   if (!response.ok) {
     throw new Error("Could not load today's data");
@@ -120,19 +122,21 @@ export default async function Home() {
   const issues = today.statuses.filter((status) => !status.ok);
   const calendarUnavailable = issues.some((status) => status.name === "Calendar");
   const notionUnavailable = issues.some((status) => status.name === "Notion");
-  const taskCount = new Set(
-    [
-      ...today.scheduled_tasks,
-      ...today.due_tasks,
-      ...today.overdue_tasks,
-    ].map((task) => task.id),
-  ).size;
+  const tasks = [
+    ...today.scheduled_tasks,
+    ...today.due_tasks,
+    ...today.overdue_tasks,
+  ];
+  const taskIds = tasks.map((task) => task.id);
   const events = [...today.events].sort((a, b) =>
     a.start.localeCompare(b.start),
   );
 
   return (
-    <div className="app-shell">
+    <TaskCompletionProvider
+      tasks={tasks.map((task) => ({ id: task.id, done: task.done }))}
+    >
+      <div className="app-shell">
       <aside className="sidebar" aria-label="Workspace">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">L</span>
@@ -149,7 +153,7 @@ export default async function Home() {
           <span className="local-dot" aria-hidden="true" />
           <div>
             <strong>Local workspace</strong>
-            <span>Viewing only</span>
+            <span>Notion connected</span>
           </div>
         </div>
       </aside>
@@ -176,7 +180,7 @@ export default async function Home() {
 
           <div className="overview-strip" aria-label="Today at a glance">
             <div className="overview-item"><strong>{today.events.length}</strong><span>Calendar events</span></div>
-            <div className="overview-item"><strong>{taskCount}</strong><span>Open tasks</span></div>
+            <div className="overview-item"><strong><OpenTaskCount taskIds={taskIds} /></strong><span>Open tasks</span></div>
             <div className="overview-item"><strong>{today.overdue_tasks.length}</strong><span>Overdue</span></div>
           </div>
 
@@ -225,7 +229,7 @@ export default async function Home() {
               <section className="panel task-panel" aria-labelledby="scheduled-heading">
                 <div className="panel-heading">
                   <div><span className="section-kicker">ON YOUR RADAR</span><h2 id="scheduled-heading">Scheduled</h2></div>
-                  <span className="count-badge">{today.scheduled_tasks.length}</span>
+                  <span className="count-badge"><OpenTaskCount taskIds={today.scheduled_tasks.map((task) => task.id)} /></span>
                 </div>
                 <TaskList tasks={today.scheduled_tasks} dateField="scheduled" emptyMessage={notionUnavailable ? "Tasks could not be loaded." : "Nothing scheduled for today."} />
               </section>
@@ -233,7 +237,7 @@ export default async function Home() {
               <section className="panel task-panel" aria-labelledby="due-heading">
                 <div className="panel-heading">
                   <div><span className="section-kicker">COMING UP</span><h2 id="due-heading">Due today</h2></div>
-                  <span className="count-badge">{today.due_tasks.length}</span>
+                  <span className="count-badge"><OpenTaskCount taskIds={today.due_tasks.map((task) => task.id)} /></span>
                 </div>
                 <TaskList tasks={today.due_tasks} dateField="due" emptyMessage={notionUnavailable ? "Tasks could not be loaded." : "No deadlines today."} />
               </section>
@@ -241,7 +245,7 @@ export default async function Home() {
               <section className="panel task-panel overdue-panel" aria-labelledby="overdue-heading">
                 <div className="panel-heading">
                   <div><span className="section-kicker">NEEDS ATTENTION</span><h2 id="overdue-heading">Overdue</h2></div>
-                  <span className="count-badge overdue-count">{today.overdue_tasks.length}</span>
+                  <span className="count-badge overdue-count"><OpenTaskCount taskIds={today.overdue_tasks.map((task) => task.id)} /></span>
                 </div>
                 <TaskList tasks={today.overdue_tasks} dateField="due" emptyMessage={notionUnavailable ? "Tasks could not be loaded." : "All caught up. Nice work."} />
               </section>
@@ -250,10 +254,11 @@ export default async function Home() {
 
           <footer className="dashboard-footer">
             <span>Life OS <span className="footer-separator">/</span> Today</span>
-            <span className="footer-status"><span className="footer-status-dot" />Read-only view</span>
+            <span className="footer-status"><span className="footer-status-dot" />Changes sync to Notion</span>
           </footer>
         </div>
       </main>
-    </div>
+      </div>
+    </TaskCompletionProvider>
   );
 }
