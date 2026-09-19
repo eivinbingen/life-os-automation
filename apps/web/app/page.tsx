@@ -26,7 +26,7 @@ type Task = {
   done: boolean;
   scheduled: string | null;
   due: string | null;
-  project_id: string | null;
+  project_name: string | null;
 };
 
 type IntegrationStatus = {
@@ -90,6 +90,12 @@ function TaskList({
           <TaskCheckbox taskId={task.id} taskName={task.name} />
           <div className="task-copy">
             <span className="task-name">{task.name}</span>
+            {task.project_name && (
+              <span className="task-project">
+                <span>Project</span>
+                {task.project_name}
+              </span>
+            )}
             {task[dateField] && (
               <span className="task-meta">
                 {dateField === "due" ? "Due " : "Scheduled "}

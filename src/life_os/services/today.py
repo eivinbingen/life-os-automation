@@ -10,7 +10,7 @@ from requests import RequestException
 from life_os.integrations.google_calendar import get_calendar_service, get_events_for_day
 from life_os.integrations.notion_tasks import fetch_tasks_for_day
 from life_os.models.calendar import CalendarEvent
-from life_os.models.notion import Task
+from life_os.models.notion import Task, TaskFetchResult
 from life_os.models.today import IntegrationStatus, Today
 
 
@@ -48,7 +48,7 @@ def build_today(
 def get_today(
     day: date,
     fetch_events: Callable[[date], list[CalendarEvent]],
-    fetch_tasks: Callable[[date], list[Task]],
+    fetch_tasks: Callable[[date], TaskFetchResult],
 ) -> Today:
     statuses: list[IntegrationStatus] = []
 
@@ -60,8 +60,17 @@ def get_today(
         statuses.append(IntegrationStatus(name="Calendar", ok=False, error=str(e)))
 
     try:
-        tasks = fetch_tasks(day)
+        task_result = fetch_tasks(day)
+        tasks = task_result.tasks
         statuses.append(IntegrationStatus(name="Notion", ok=True))
+        if task_result.warnings:
+            statuses.append(
+                IntegrationStatus(
+                    name="Notion projects",
+                    ok=False,
+                    error=" ".join(task_result.warnings),
+                )
+            )
     except RequestException as e:
         tasks = []
         statuses.append(IntegrationStatus(name="Notion", ok=False, error=str(e)))
