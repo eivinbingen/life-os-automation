@@ -1,0 +1,78 @@
+name: Vertical slice
+description: Define one complete, observable, and independently testable product change.
+title: "[Slice] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep this slice small enough for one reviewable pull request. Describe behavior and outcomes before implementation details.
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: User outcome
+      description: What becomes possible or easier when this slice is complete?
+      placeholder: As a Life OS user, I can...
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-behavior
+    attributes:
+      label: Current behavior
+      description: What happens today, and what problem does that create?
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: List observable results using a Markdown checklist.
+      placeholder: |
+        - [ ] The user can...
+        - [ ] Reloading the page...
+        - [ ] Existing behavior continues to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and relevant context
+      description: Include architecture, integration, privacy, or external-write constraints that apply.
+      placeholder: Follow AGENTS.md and link any relevant project documentation.
+
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: List nearby work that should remain outside this slice.
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      description: Describe automated checks and any manual acceptance steps.
+      placeholder: |
+        Automated:
+        - ...
+
+        Manual:
+        - ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: implementation-mode
+    attributes:
+      label: Implementation mode
+      description: Choose how Eivin and the agent will divide the coding work.
+      options:
+        - Agent-led implementation
+        - Collaborative implementation
+        - Learning exercise — Eivin implements
+    validations:
+      required: true

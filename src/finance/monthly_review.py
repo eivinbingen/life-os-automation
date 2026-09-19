@@ -201,7 +201,7 @@ def run_monthly_review(month: str, token: str) -> None:
 
     print("Account status: ")
     print("---------------------------------------")
-    for id, acc in accounts.items():
+    for _id, acc in accounts.items():
         print(f"{acc['name']} - Balance: {acc['balance']}")
 
     print("\n\n")
