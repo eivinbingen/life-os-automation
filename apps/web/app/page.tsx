@@ -1,6 +1,14 @@
 import { connection } from "next/server";
 import Link from "next/link";
 
+import {
+  APP_TIME_ZONE,
+  dayHeading,
+  formatDay,
+  getLocalDay,
+  isValidDay,
+  shiftDay,
+} from "./date-utils";
 import { TaskCheckbox } from "./task-checkbox";
 import { OpenTaskCount, TaskCompletionProvider } from "./task-completion";
 
@@ -39,57 +47,8 @@ type Today = {
 const timeFormatter = new Intl.DateTimeFormat("en-GB", {
   hour: "2-digit",
   minute: "2-digit",
-  timeZone: "Europe/Zurich",
+  timeZone: APP_TIME_ZONE,
 });
-
-const APP_TIME_ZONE = "Europe/Zurich";
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-function getLocalDay() {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: APP_TIME_ZONE,
-  }).formatToParts(new Date());
-  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
-function isValidDay(value: string | undefined): value is string {
-  if (!value || !DATE_PATTERN.test(value)) return false;
-
-  const date = new Date(`${value}T12:00:00Z`);
-  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-}
-
-function shiftDay(day: string, amount: number) {
-  const date = new Date(`${day}T12:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + amount);
-  return date.toISOString().slice(0, 10);
-}
-
-function dayHeading(day: string, localDay: string) {
-  if (day === localDay) return "Today";
-  if (day === shiftDay(localDay, -1)) return "Yesterday";
-  if (day === shiftDay(localDay, 1)) return "Tomorrow";
-
-  return new Intl.DateTimeFormat("en-GB", {
-    weekday: "long",
-    timeZone: "UTC",
-  }).format(new Date(`${day}T12:00:00Z`));
-}
-
-function formatDay(day: string) {
-  return new Intl.DateTimeFormat("en-GB", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(`${day}T12:00:00Z`));
-}
 
 function formatShortDate(value: string) {
   return new Intl.DateTimeFormat("en-GB", {
