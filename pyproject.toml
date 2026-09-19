@@ -13,6 +13,9 @@ dependencies = [
     "uvicorn>=0.53.0",
 ]
 
+[project.scripts]
+life-os-dev = "life_os.dev:main"
+
 [build-system]
 requires = ["uv_build>=0.11,<0.12"]
 build-backend = "uv_build"
