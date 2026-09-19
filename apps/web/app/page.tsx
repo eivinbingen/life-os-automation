@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import Link from "next/link";
 
 import { TaskCheckbox } from "./task-checkbox";
 import { OpenTaskCount, TaskCompletionProvider } from "./task-completion";
@@ -40,6 +41,45 @@ const timeFormatter = new Intl.DateTimeFormat("en-GB", {
   minute: "2-digit",
   timeZone: "Europe/Zurich",
 });
+
+const APP_TIME_ZONE = "Europe/Zurich";
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function getLocalDay() {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: APP_TIME_ZONE,
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function isValidDay(value: string | undefined): value is string {
+  if (!value || !DATE_PATTERN.test(value)) return false;
+
+  const date = new Date(`${value}T12:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function shiftDay(day: string, amount: number) {
+  const date = new Date(`${day}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().slice(0, 10);
+}
+
+function dayHeading(day: string, localDay: string) {
+  if (day === localDay) return "Today";
+  if (day === shiftDay(localDay, -1)) return "Yesterday";
+  if (day === shiftDay(localDay, 1)) return "Tomorrow";
+
+  return new Intl.DateTimeFormat("en-GB", {
+    weekday: "long",
+    timeZone: "UTC",
+  }).format(new Date(`${day}T12:00:00Z`));
+}
 
 function formatDay(day: string) {
   return new Intl.DateTimeFormat("en-GB", {
@@ -104,15 +144,22 @@ function TaskList({
   );
 }
 
-export default async function Home() {
+export default async function Home({ searchParams }: PageProps<"/">) {
   await connection();
   const apiUrl = process.env.LIFE_OS_API_URL;
+  const requestedDay = (await searchParams).day;
+  const dayCandidate = typeof requestedDay === "string" ? requestedDay : undefined;
+  const localDay = getLocalDay();
+  const selectedDay = isValidDay(dayCandidate) ? dayCandidate : localDay;
 
   if (!apiUrl) {
     throw new Error("LIFE_OS_API_URL is not configured");
   }
 
-  const response = await fetch(`${apiUrl}/today`, { cache: "no-store" });
+  const response = await fetch(
+    `${apiUrl}/today?day=${encodeURIComponent(selectedDay)}`,
+    { cache: "no-store" },
+  );
 
   if (!response.ok) {
     throw new Error("Could not load today's data");
@@ -131,6 +178,10 @@ export default async function Home() {
   const events = [...today.events].sort((a, b) =>
     a.start.localeCompare(b.start),
   );
+  const previousDay = shiftDay(selectedDay, -1);
+  const nextDay = shiftDay(selectedDay, 1);
+  const heading = dayHeading(selectedDay, localDay);
+  const isCurrentDay = selectedDay === localDay;
 
   return (
     <TaskCompletionProvider
@@ -167,18 +218,25 @@ export default async function Home() {
         <div className="dashboard-content">
           <section className="intro" aria-labelledby="page-title">
             <div>
-              <p className="eyebrow"><span className="eyebrow-line" /> TODAY&apos;S OVERVIEW</p>
-              <h1 id="page-title">Today<span className="title-period">.</span></h1>
+              <p className="eyebrow"><span className="eyebrow-line" /> DAILY OVERVIEW</p>
+              <h1 id="page-title">{heading}<span className="title-period">.</span></h1>
               <p className="intro-copy">A clear view of your time and what needs your attention.</p>
             </div>
-            <div className="date-tile" aria-label={formatDay(today.day)}>
-              <span>{new Intl.DateTimeFormat("en-GB", { month: "short", timeZone: "UTC" }).format(new Date(`${today.day}T12:00:00Z`))}</span>
-              <strong>{today.day.slice(8, 10)}</strong>
-              <span>{new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "UTC" }).format(new Date(`${today.day}T12:00:00Z`))}</span>
+            <div className="date-navigation">
+              <div className="day-controls" aria-label="Choose a day">
+                <Link href={`/?day=${previousDay}`} aria-label={`Previous day, ${formatDay(previousDay)}`}>&larr;</Link>
+                <Link className="today-link" href={`/?day=${localDay}`}>Today</Link>
+                <Link href={`/?day=${nextDay}`} aria-label={`Next day, ${formatDay(nextDay)}`}>&rarr;</Link>
+              </div>
+              <div className="date-tile" aria-label={formatDay(today.day)}>
+                <span>{new Intl.DateTimeFormat("en-GB", { month: "short", timeZone: "UTC" }).format(new Date(`${today.day}T12:00:00Z`))}</span>
+                <strong>{today.day.slice(8, 10)}</strong>
+                <span>{new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "UTC" }).format(new Date(`${today.day}T12:00:00Z`))}</span>
+              </div>
             </div>
           </section>
 
-          <div className="overview-strip" aria-label="Today at a glance">
+          <div className="overview-strip" aria-label="Selected day at a glance">
             <div className="overview-item"><strong>{today.events.length}</strong><span>Calendar events</span></div>
             <div className="overview-item"><strong><OpenTaskCount taskIds={taskIds} /></strong><span>Open tasks</span></div>
             <div className="overview-item"><strong>{today.overdue_tasks.length}</strong><span>Overdue</span></div>
@@ -205,7 +263,7 @@ export default async function Home() {
                   <div className="calendar-empty">
                     <span className="empty-icon" aria-hidden="true">✦</span>
                     <h3>{calendarUnavailable ? "Calendar unavailable" : "A little breathing room"}</h3>
-                    <p>{calendarUnavailable ? "Your events could not be loaded right now." : "No events on your calendar for today."}</p>
+                    <p>{calendarUnavailable ? "Your events could not be loaded right now." : `No events on your calendar for ${isCurrentDay ? "today" : "this day"}.`}</p>
                   </div>
                 ) : (
                   <ol className="event-list">
@@ -231,15 +289,15 @@ export default async function Home() {
                   <div><span className="section-kicker">ON YOUR RADAR</span><h2 id="scheduled-heading">Scheduled</h2></div>
                   <span className="count-badge"><OpenTaskCount taskIds={today.scheduled_tasks.map((task) => task.id)} /></span>
                 </div>
-                <TaskList tasks={today.scheduled_tasks} dateField="scheduled" emptyMessage={notionUnavailable ? "Tasks could not be loaded." : "Nothing scheduled for today."} />
+                <TaskList tasks={today.scheduled_tasks} dateField="scheduled" emptyMessage={notionUnavailable ? "Tasks could not be loaded." : `Nothing scheduled for ${isCurrentDay ? "today" : "this day"}.`} />
               </section>
 
               <section className="panel task-panel" aria-labelledby="due-heading">
                 <div className="panel-heading">
-                  <div><span className="section-kicker">COMING UP</span><h2 id="due-heading">Due today</h2></div>
+                  <div><span className="section-kicker">COMING UP</span><h2 id="due-heading">Due {isCurrentDay ? "today" : "this day"}</h2></div>
                   <span className="count-badge"><OpenTaskCount taskIds={today.due_tasks.map((task) => task.id)} /></span>
                 </div>
-                <TaskList tasks={today.due_tasks} dateField="due" emptyMessage={notionUnavailable ? "Tasks could not be loaded." : "No deadlines today."} />
+                <TaskList tasks={today.due_tasks} dateField="due" emptyMessage={notionUnavailable ? "Tasks could not be loaded." : `No deadlines ${isCurrentDay ? "today" : "this day"}.`} />
               </section>
 
               <section className="panel task-panel overdue-panel" aria-labelledby="overdue-heading">
