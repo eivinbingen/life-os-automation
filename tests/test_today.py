@@ -4,7 +4,7 @@ from googleapiclient.errors import HttpError
 from requests import RequestException
 
 from life_os.models.calendar import CalendarEvent
-from life_os.models.notion import Task
+from life_os.models.notion import Task, TaskFetchResult
 from life_os.services.today import build_today, get_today
 
 DAY = date(2026, 9, 17)
@@ -152,7 +152,7 @@ def fetch_events_ok(day):
 
 
 def fetch_tasks_ok(day):
-    return [Task(id="1", name="walk dog", scheduled=DAY)]
+    return TaskFetchResult(tasks=[Task(id="1", name="walk dog", scheduled=DAY)])
 
 
 def test_both_integrations_ok():
@@ -161,6 +161,24 @@ def test_both_integrations_ok():
     assert [e.title for e in overview.events] == ["Standup"]
     assert [t.name for t in overview.scheduled_tasks] == ["walk dog"]
     assert [(s.name, s.ok) for s in overview.statuses] == [("Calendar", True), ("Notion", True)]
+
+
+def test_project_warning_keeps_tasks_and_reports_partial_failure():
+    def fetch_tasks_with_warning(day):
+        return TaskFetchResult(
+            tasks=[Task(id="1", name="walk dog", scheduled=DAY)],
+            warnings=["Could not load names for 1 project."],
+        )
+
+    overview = get_today(DAY, fetch_events_ok, fetch_tasks_with_warning)
+
+    assert [task.name for task in overview.scheduled_tasks] == ["walk dog"]
+    assert [(status.name, status.ok) for status in overview.statuses] == [
+        ("Calendar", True),
+        ("Notion", True),
+        ("Notion projects", False),
+    ]
+    assert overview.statuses[-1].error == "Could not load names for 1 project."
 
 
 def test_calendar_failure_degrades_gracefully():

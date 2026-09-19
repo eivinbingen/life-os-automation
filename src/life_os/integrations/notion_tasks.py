@@ -4,7 +4,35 @@ from os import getenv
 import requests
 from dotenv import load_dotenv
 
-from life_os.models.notion import Task
+from life_os.models.notion import Task, TaskFetchResult
+
+NOTION_API_URL = "https://api.notion.com/v1"
+NOTION_VERSION = "2026-03-11"
+
+
+def _headers(token: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {token}",
+        "Notion-Version": NOTION_VERSION,
+        "Content-Type": "application/json",
+    }
+
+
+def _page_title(notion_page: dict) -> str | None:
+    for prop in notion_page.get("properties", {}).values():
+        if prop.get("type") == "title":
+            title = "".join(part.get("plain_text", "") for part in prop.get("title", []))
+            return title or None
+    return None
+
+
+def _fetch_project_name(token: str, project_id: str) -> str | None:
+    response = requests.get(
+        url=f"{NOTION_API_URL}/pages/{project_id}",
+        headers=_headers(token),
+    )
+    response.raise_for_status()
+    return _page_title(response.json())
 
 
 def create_task(notion_page: dict) -> Task:
@@ -36,7 +64,9 @@ def create_task(notion_page: dict) -> Task:
     return Task(id=id, name=name, done=done, scheduled=scheduled, due=due, project_id=project_id)
 
 
-def fetch_tasks_for_day(token: str, data_source_id: str, day: date, page_size: int) -> list[Task]:
+def fetch_tasks_for_day(
+    token: str, data_source_id: str, day: date, page_size: int
+) -> TaskFetchResult:
     body = {
         "filter": {
             "and": [
@@ -55,12 +85,8 @@ def fetch_tasks_for_day(token: str, data_source_id: str, day: date, page_size: i
 
     while True:
         res = requests.post(
-            url=f"https://api.notion.com/v1/data_sources/{data_source_id}/query",
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Notion-Version": "2026-03-11",
-                "Content-Type": "application/json",
-            },
+            url=f"{NOTION_API_URL}/data_sources/{data_source_id}/query",
+            headers=_headers(token),
             json=body,
         )
 
@@ -74,7 +100,27 @@ def fetch_tasks_for_day(token: str, data_source_id: str, day: date, page_size: i
             break
         body["start_cursor"] = data["next_cursor"]
 
-    return tasks
+    project_names: dict[str, str | None] = {}
+    failed_lookups = 0
+    for project_id in {task.project_id for task in tasks if task.project_id}:
+        try:
+            project_names[project_id] = _fetch_project_name(token, project_id)
+            if project_names[project_id] is None:
+                failed_lookups += 1
+        except requests.RequestException:
+            project_names[project_id] = None
+            failed_lookups += 1
+
+    for task in tasks:
+        if task.project_id:
+            task.project_name = project_names[task.project_id]
+
+    warnings = []
+    if failed_lookups:
+        noun = "project" if failed_lookups == 1 else "projects"
+        warnings.append(f"Could not load names for {failed_lookups} {noun}.")
+
+    return TaskFetchResult(tasks=tasks, warnings=warnings)
 
 
 def set_task_done(token: str, task_id: str, done: bool) -> bool:
@@ -82,12 +128,8 @@ def set_task_done(token: str, task_id: str, done: bool) -> bool:
     body = {"properties": {"Done": {"checkbox": done}}}
 
     res = requests.patch(
-        url=f"https://api.notion.com/v1/pages/{task_id}",
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Notion-Version": "2026-03-11",
-            "Content-Type": "application/json",
-        },
+        url=f"{NOTION_API_URL}/pages/{task_id}",
+        headers=_headers(token),
         json=body,
     )
 
