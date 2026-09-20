@@ -14,6 +14,15 @@ class Task:
 
 
 @dataclass
+class TaskCreate:
+    """A task to be created in Notion: only what capture means to write."""
+
+    name: str
+    scheduled: date | None = None
+    due: date | None = None
+
+
+@dataclass
 class TaskFetchResult:
     tasks: list[Task]
     warnings: list[str] = field(default_factory=list)

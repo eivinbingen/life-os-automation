@@ -56,6 +56,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
           <time dateTime={today.day}>{formatDay(today.day)}</time>
         </header>
         <Dashboard
+          key={today.day}
           initialToday={today}
           localDay={localDay}
           initialRefreshedAt={new Date().toISOString()}

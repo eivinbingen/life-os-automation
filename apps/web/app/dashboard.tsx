@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 
 import type { Today } from "./actions";
@@ -11,12 +18,36 @@ import {
   formatDay,
   shiftDay,
 } from "./date-utils";
+import { TaskCapture } from "./task-capture";
 import { TaskCheckbox } from "./task-checkbox";
 import {
   OpenTaskCount,
   TaskCompletionProvider,
   useTaskCompletion,
 } from "./task-completion";
+
+type DashboardOperations = {
+  refresh: () => Promise<void>;
+  isRefreshing: boolean;
+  capturePending: boolean;
+  setCapturePending: (pending: boolean) => void;
+  savedNotice: string | null;
+  setSavedNotice: (name: string | null) => void;
+};
+
+const DashboardOperationsContext = createContext<DashboardOperations | null>(
+  null,
+);
+
+export function useDashboardOperations() {
+  const context = useContext(DashboardOperationsContext);
+
+  if (!context) {
+    throw new Error("Dashboard operation components must be inside Dashboard");
+  }
+
+  return context;
+}
 
 const timeFormatter = new Intl.DateTimeFormat("en-GB", {
   hour: "2-digit",
@@ -104,8 +135,8 @@ function RefreshButton({
   isRefreshing,
   lastRefreshedAt,
 }: RefreshControlsProps) {
-  const { pendingIds } = useTaskCompletion();
-  const completionInFlight = pendingIds.size > 0;
+  const { pendingIds, capturePending } = useTaskCompletion();
+  const completionInFlight = pendingIds.size > 0 || capturePending;
 
   return (
     <span className="refresh-meta">
@@ -132,8 +163,8 @@ function RefreshButton({
 }
 
 function RefreshRetry({ refresh, isRefreshing }: RefreshControlsProps) {
-  const { pendingIds } = useTaskCompletion();
-  const completionInFlight = pendingIds.size > 0;
+  const { pendingIds, capturePending } = useTaskCompletion();
+  const completionInFlight = pendingIds.size > 0 || capturePending;
 
   return (
     <button
@@ -163,6 +194,10 @@ export function Dashboard({
   const [lastRefreshedAt, setLastRefreshedAt] = useState(initialRefreshedAt);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [capturePending, setCapturePending] = useState(false);
+  // Lives outside the completion provider so the remount that re-seeds
+  // checkbox state cannot wipe a capture's save confirmation.
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
   // Guards against duplicate refresh requests even if two clicks land in the
   // same render frame, before isRefreshing state updates.
   const refreshInFlight = useRef(false);
@@ -222,12 +257,23 @@ export function Dashboard({
 
   const refreshControls = { refresh: () => void refresh(), isRefreshing, lastRefreshedAt };
 
+  const operations: DashboardOperations = {
+    refresh,
+    isRefreshing,
+    capturePending,
+    setCapturePending,
+    savedNotice,
+    setSavedNotice,
+  };
+
   return (
-    <TaskCompletionProvider
-      key={completionEpoch}
-      tasks={tasks.map((task) => ({ id: task.id, done: task.done }))}
-      refreshInProgress={isRefreshing}
-    >
+    <DashboardOperationsContext.Provider value={operations}>
+      <TaskCompletionProvider
+        key={completionEpoch}
+        tasks={tasks.map((task) => ({ id: task.id, done: task.done }))}
+        refreshInProgress={isRefreshing}
+        capturePending={capturePending}
+      >
       <div className="dashboard-content">
         <section className="intro" aria-labelledby="page-title">
           <div>
@@ -241,6 +287,7 @@ export function Dashboard({
               <Link className="today-link" href={`/?day=${localDay}`}>Today</Link>
               <Link href={`/?day=${nextDay}`} aria-label={`Next day, ${formatDay(nextDay)}`}>&rarr;</Link>
             </div>
+            <TaskCapture selectedDay={selectedDay} />
             <div className="date-tile" aria-label={formatDay(today.day)}>
               <span>{new Intl.DateTimeFormat("en-GB", { month: "short", timeZone: "UTC" }).format(new Date(`${today.day}T12:00:00Z`))}</span>
               <strong>{today.day.slice(8, 10)}</strong>
@@ -260,6 +307,20 @@ export function Dashboard({
             <span className="alert-symbol" aria-hidden="true">!</span>
             <span>Refresh failed. Showing the last loaded information.</span>
             <RefreshRetry {...refreshControls} />
+          </div>
+        )}
+
+        {savedNotice && (
+          <div className="integration-alert capture-saved-alert" role="status">
+            <span className="alert-symbol saved-symbol" aria-hidden="true">✓</span>
+            <span>Saved “{savedNotice}” to Notion.</span>
+            <button
+              className="refresh-retry capture-saved-dismiss"
+              type="button"
+              onClick={() => setSavedNotice(null)}
+            >
+              Dismiss
+            </button>
           </div>
         )}
 
@@ -339,6 +400,7 @@ export function Dashboard({
           </span>
         </footer>
       </div>
-    </TaskCompletionProvider>
+      </TaskCompletionProvider>
+    </DashboardOperationsContext.Provider>
   );
 }

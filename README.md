@@ -11,7 +11,8 @@ See [the product vision](docs/product-vision.md) and [roadmap](docs/roadmap.md) 
 - Python 3.13 or newer
 - [uv](https://docs.astral.sh/uv/)
 - Node.js and npm
-- A Notion integration with access to the task data source
+- A Notion integration with access to the task data source and the **Insert content**
+  capability enabled (required for task capture)
 - A Google OAuth desktop client with Calendar access
 
 ### First-time setup
