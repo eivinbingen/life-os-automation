@@ -7,12 +7,9 @@ import { createTask } from "./actions";
 import { formatDay } from "./date-utils";
 import { useDashboardOperations } from "./dashboard";
 
-type CaptureProps = {
-  selectedDay: string;
-};
-
-export function TaskCapture({ selectedDay }: CaptureProps) {
+export function TaskCapture({ selectedDay }: { selectedDay: string }) {
   const formId = useId();
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [showDetails, setShowDetails] = useState(false);
   const [scheduled, setScheduled] = useState<string>(selectedDay);
@@ -30,6 +27,19 @@ export function TaskCapture({ selectedDay }: CaptureProps) {
   } = useDashboardOperations();
   const blocked = pending || isRefreshing || capturePending;
   const nameBlank = name.trim().length === 0;
+
+  function openCapture() {
+    setOpen(true);
+    // Focus lands on the name input once it is rendered.
+    requestAnimationFrame(() => nameInput.current?.focus());
+  }
+
+  function closeCapture() {
+    if (pending) return;
+    setOpen(false);
+    setShowDetails(false);
+    setError(null);
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -50,6 +60,7 @@ export function TaskCapture({ selectedDay }: CaptureProps) {
       setName("");
       setDue("");
       setShowDetails(false);
+      setOpen(false);
       await refresh();
     } else {
       setError(result.error);
@@ -60,9 +71,21 @@ export function TaskCapture({ selectedDay }: CaptureProps) {
     nameInput.current?.focus();
   }
 
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="add-task-button"
+        onClick={openCapture}
+        disabled={isRefreshing || capturePending}
+      >
+        + Add task
+      </button>
+    );
+  }
+
   return (
-    <section className="capture-panel" aria-labelledby="capture-heading">
-      <h2 id="capture-heading" className="capture-title">Add a task</h2>
+    <div className="capture-popover" role="group" aria-label="Add a task">
       <form onSubmit={submit} className="capture-form">
         <label htmlFor={`${formId}-name`} className="visually-hidden">
           Task name
@@ -83,6 +106,15 @@ export function TaskCapture({ selectedDay }: CaptureProps) {
           disabled={blocked || nameBlank}
         >
           {pending ? "Adding…" : "Add"}
+        </button>
+        <button
+          type="button"
+          className="capture-close"
+          onClick={closeCapture}
+          aria-label="Close capture"
+          disabled={pending}
+        >
+          ✕
         </button>
       </form>
 
@@ -168,6 +200,6 @@ export function TaskCapture({ selectedDay }: CaptureProps) {
           </button>
         </p>
       )}
-    </section>
+    </div>
   );
 }

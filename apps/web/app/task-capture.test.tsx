@@ -43,18 +43,28 @@ function renderDashboard(initialToday: Today = makeToday()) {
   );
 }
 
+async function openCapture(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "+ Add task" }));
+  return screen.getByPlaceholderText("What needs doing?") as HTMLInputElement;
+}
+
 describe("Task capture", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     refreshToday.mockResolvedValue({ ok: true, today: makeToday() } as RefreshResult);
   });
 
-  it("shows the selected day as the default scheduled date", () => {
+  it("is hidden until opened, then focuses the name input", async () => {
+    const user = userEvent.setup();
     renderDashboard();
 
-    expect(
-      screen.getByText("Scheduled for Sunday, 20 September 2026"),
-    ).toBeTruthy();
+    expect(screen.queryByPlaceholderText("What needs doing?")).toBeNull();
+
+    await openCapture(user);
+    await waitFor(() => {
+      const input = screen.getByPlaceholderText("What needs doing?");
+      expect(document.activeElement).toBe(input);
+    });
   });
 
   it("creates a task with the entered name and selected-day scheduled date", async () => {
@@ -62,7 +72,7 @@ describe("Task capture", () => {
     createTask.mockResolvedValue({ ok: true, name: "Buy oat milk" });
     renderDashboard();
 
-    const input = screen.getByPlaceholderText("What needs doing?");
+    const input = await openCapture(user);
     await user.type(input, "Buy oat milk");
     await user.click(screen.getByRole("button", { name: "Add" }));
 
@@ -74,18 +84,19 @@ describe("Task capture", () => {
       expect(refreshToday).toHaveBeenCalledWith("2026-09-20");
     });
     expect(screen.getByText(/Saved “Buy oat milk” to Notion/)).toBeTruthy();
-    // Input is cleared for the next capture.
-    expect(
-      (screen.getByPlaceholderText("What needs doing?") as HTMLInputElement)
-        .value,
-    ).toBe("");
+    // Capture closes and the input is gone after a successful save.
+    expect(screen.queryByPlaceholderText("What needs doing?")).toBeNull();
   });
 
-  it("requires a non-blank name before submission is possible", () => {
+  it("requires a non-blank name before submission is possible", async () => {
+    const user = userEvent.setup();
     renderDashboard();
 
+    await openCapture(user);
+
     expect(
-      (screen.getByRole("button", { name: "Add" }) as HTMLButtonElement).disabled,
+      (screen.getByRole("button", { name: "Add" }) as HTMLButtonElement)
+        .disabled,
     ).toBe(true);
   });
 
@@ -94,6 +105,7 @@ describe("Task capture", () => {
     createTask.mockResolvedValue({ ok: true, name: "Essay" });
     renderDashboard();
 
+    await openCapture(user);
     await user.click(screen.getByRole("button", { name: "More details" }));
 
     const dueInput = screen.getByLabelText("Due") as HTMLInputElement;
@@ -120,23 +132,18 @@ describe("Task capture", () => {
     createTask.mockResolvedValue({ ok: false, error: "Could not save the task" });
     renderDashboard();
 
-    await user.type(
-      screen.getByPlaceholderText("What needs doing?"),
-      "Failing task",
-    );
+    const input = await openCapture(user);
+    await user.type(input, "Failing task");
     await user.click(screen.getByRole("button", { name: "Add" }));
 
     await waitFor(() => {
       expect(screen.getByText("Could not save the task")).toBeTruthy();
     });
     // Entered name is preserved for retry.
+    expect(input.value).toBe("Failing task");
     expect(
-      (screen.getByPlaceholderText("What needs doing?") as HTMLInputElement)
-        .value,
-    ).toBe("Failing task");
-    // The Add button is re-enabled so the user can retry.
-    expect(
-      (screen.getByRole("button", { name: "Add" }) as HTMLButtonElement).disabled,
+      (screen.getByRole("button", { name: "Add" }) as HTMLButtonElement)
+        .disabled,
     ).toBe(false);
   });
 
@@ -151,10 +158,8 @@ describe("Task capture", () => {
     );
     renderDashboard();
 
-    await user.type(
-      screen.getByPlaceholderText("What needs doing?"),
-      "Slow task",
-    );
+    const input = await openCapture(user);
+    await user.type(input, "Slow task");
     await user.click(screen.getByRole("button", { name: "Add" }));
 
     // Pending: button shows the in-flight state and is disabled.
@@ -162,10 +167,15 @@ describe("Task capture", () => {
       (screen.getByRole("button", { name: "Adding…" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+    // Closing is prevented while pending.
+    expect(
+      (screen.getByRole("button", { name: "Close capture" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
 
     resolveCreate({ ok: true, name: "Slow task" });
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Add" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "+ Add task" })).toBeTruthy();
     });
     expect(createTask).toHaveBeenCalledTimes(1);
   });
@@ -175,9 +185,9 @@ describe("Task capture", () => {
     createTask.mockResolvedValue({ ok: true, name: "Later task" });
     renderDashboard();
 
+    await openCapture(user);
     await user.click(screen.getByRole("button", { name: "More details" }));
-    // The Scheduled date input, distinguished from the "Scheduled" section
-    // heading by its prefilled selected-day value.
+    // The Scheduled date input, found by its prefilled selected-day value.
     const scheduledInput = screen.getByDisplayValue("2026-09-20");
     // Date inputs with an existing value reject char-by-char typing in jsdom;
     // set the complete value instead.
@@ -192,5 +202,17 @@ describe("Task capture", () => {
       expect(createTask).toHaveBeenCalledWith("Later task", "2026-09-22", null);
     });
     expect(screen.getByText(/Saved “Later task” to Notion/)).toBeTruthy();
+  });
+
+  it("closes without saving when the close button is used", async () => {
+    const user = userEvent.setup();
+    renderDashboard();
+
+    const input = await openCapture(user);
+    await user.type(input, "Never saved");
+    await user.click(screen.getByRole("button", { name: "Close capture" }));
+
+    expect(screen.queryByPlaceholderText("What needs doing?")).toBeNull();
+    expect(createTask).not.toHaveBeenCalled();
   });
 });

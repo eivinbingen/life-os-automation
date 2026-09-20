@@ -287,6 +287,7 @@ export function Dashboard({
               <Link className="today-link" href={`/?day=${localDay}`}>Today</Link>
               <Link href={`/?day=${nextDay}`} aria-label={`Next day, ${formatDay(nextDay)}`}>&rarr;</Link>
             </div>
+            <TaskCapture selectedDay={selectedDay} />
             <div className="date-tile" aria-label={formatDay(today.day)}>
               <span>{new Intl.DateTimeFormat("en-GB", { month: "short", timeZone: "UTC" }).format(new Date(`${today.day}T12:00:00Z`))}</span>
               <strong>{today.day.slice(8, 10)}</strong>
@@ -365,8 +366,6 @@ export function Dashboard({
           </section>
 
           <div className="task-column">
-            <TaskCapture selectedDay={selectedDay} />
-
             <section className="panel task-panel" aria-labelledby="scheduled-heading">
               <div className="panel-heading">
                 <div><span className="section-kicker">ON YOUR RADAR</span><h2 id="scheduled-heading">Scheduled</h2></div>
