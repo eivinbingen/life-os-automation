@@ -65,7 +65,7 @@ The first endpoints may include:
 - `GET /tasks`
 - `GET /health`
 
-The initial API should be read-only.
+The API started read-only. It now includes one selected write action (`PATCH /tasks/{task_id}`, setting a task's `Done` checkbox in Notion); everything else remains read-only until a vertical slice explicitly adds more writes.
 
 ### Frontend
 
@@ -136,7 +136,7 @@ This allows Codex or ChatGPT to use the same tested operations as the web applic
 - `.env.example` should contain variable names but no real values.
 - Logs and tests should avoid exposing financial, calendar, or personal data.
 - Write permissions should be added gradually and only where necessary.
-- The initial version should use read-only API scopes whenever possible.
+- Use the narrowest API scopes available: read-only scopes where the application does not write (for example Calendar), and content scopes limited to the specific properties a slice writes (for example updating a task's `Done` checkbox).
 
 ## Initial Technical Decisions
 
@@ -145,7 +145,7 @@ This allows Codex or ChatGPT to use the same tested operations as the web applic
 - **Python environment:** `uv`.
 - **Initial deployment:** Localhost.
 - **Initial access:** Single user.
-- **Initial behavior:** Read-only.
+- **Initial behavior:** Read-only, extended with selected writes one vertical slice at a time.
 - **Database:** None initially.
 - **Sources of truth:** Existing external services.
 
