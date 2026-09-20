@@ -3,6 +3,7 @@ from datetime import date
 from requests import RequestException
 
 from life_os.integrations import notion_tasks
+from life_os.models.notion import TaskCreate
 
 
 class FakeResponse:
@@ -99,3 +100,80 @@ def test_project_lookup_failure_keeps_task(monkeypatch):
     assert [task.name for task in result.tasks] == ["Task one"]
     assert result.tasks[0].project_name is None
     assert result.warnings == ["Could not load names for 1 project."]
+
+
+def test_create_task_writes_only_capture_properties(monkeypatch):
+    created_requests = []
+
+    def post(**kwargs):
+        created_requests.append(kwargs)
+        return FakeResponse(
+            {
+                "id": "new-task-1",
+                "properties": {
+                    "Name": {"title": [{"plain_text": "Buy oat milk"}]},
+                    "Done": {"checkbox": False},
+                    "Scheduled": {"date": {"start": "2026-09-20"}},
+                    "Due": {"date": None},
+                    "Project": {"relation": []},
+                },
+            }
+        )
+
+    monkeypatch.setattr(notion_tasks.requests, "post", post)
+
+    task = notion_tasks.create_task(
+        token="secret",
+        data_source_id="tasks",
+        task=TaskCreate(name="Buy oat milk", scheduled=date(2026, 9, 20)),
+    )
+
+    assert task.id == "new-task-1"
+    assert task.name == "Buy oat milk"
+    assert task.done is False
+    assert task.scheduled == date(2026, 9, 20)
+    assert task.due is None
+
+    assert len(created_requests) == 1
+    body = created_requests[0]["json"]
+    assert body["parent"] == {"data_source_id": "tasks", "type": "data_source_id"}
+    assert body["properties"]["Name"] == {"title": [{"text": {"content": "Buy oat milk"}}]}
+    assert body["properties"]["Done"] == {"checkbox": False}
+    assert body["properties"]["Scheduled"] == {"date": {"start": "2026-09-20"}}
+    # Dates capture does not set are omitted entirely, never sent as null.
+    assert "Due" not in body["properties"]
+
+
+def test_create_task_without_dates_sends_no_date_properties(monkeypatch):
+    created_requests = []
+
+    def post(**kwargs):
+        created_requests.append(kwargs)
+        return FakeResponse(
+            {
+                "id": "new-task-2",
+                "properties": {
+                    "Name": {"title": [{"plain_text": "Someday idea"}]},
+                    "Done": {"checkbox": False},
+                    "Scheduled": {"date": None},
+                    "Due": {"date": None},
+                    "Project": {"relation": []},
+                },
+            }
+        )
+
+    monkeypatch.setattr(notion_tasks.requests, "post", post)
+
+    task = notion_tasks.create_task(
+        token="secret",
+        data_source_id="tasks",
+        task=TaskCreate(name="Someday idea"),
+    )
+
+    assert task.name == "Someday idea"
+    assert task.scheduled is None
+    assert task.due is None
+
+    body = created_requests[0]["json"]["properties"]
+    assert "Scheduled" not in body
+    assert "Due" not in body

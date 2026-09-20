@@ -4,7 +4,7 @@ from os import getenv
 import requests
 from dotenv import load_dotenv
 
-from life_os.models.notion import Task, TaskFetchResult
+from life_os.models.notion import Task, TaskCreate, TaskFetchResult
 
 NOTION_API_URL = "https://api.notion.com/v1"
 NOTION_VERSION = "2026-03-11"
@@ -35,7 +35,7 @@ def _fetch_project_name(token: str, project_id: str) -> str | None:
     return _page_title(response.json())
 
 
-def create_task(notion_page: dict) -> Task:
+def _task_from_page(notion_page: dict) -> Task:
     id = notion_page["id"]
     props = notion_page["properties"]
     name = "".join(part["plain_text"] for part in props["Name"]["title"])
@@ -93,7 +93,7 @@ def fetch_tasks_for_day(
         res.raise_for_status()
         data = res.json()
         for t in data["results"]:
-            task = create_task(t)
+            task = _task_from_page(t)
             tasks.append(task)
 
         if not data["has_more"]:
@@ -135,6 +135,35 @@ def set_task_done(token: str, task_id: str, done: bool) -> bool:
 
     res.raise_for_status()
     return True
+
+
+def create_task(token: str, data_source_id: str, task: TaskCreate) -> Task:
+    """Create a task page in the configured Notion data source.
+
+    Writes only what capture means to set: the name, Done unchecked, and
+    each date only when provided. Dates are written as date-only values.
+    """
+
+    properties: dict = {
+        "Name": {"title": [{"text": {"content": task.name}}]},
+        "Done": {"checkbox": False},
+    }
+    if task.scheduled is not None:
+        properties["Scheduled"] = {"date": {"start": task.scheduled.isoformat()}}
+    if task.due is not None:
+        properties["Due"] = {"date": {"start": task.due.isoformat()}}
+
+    res = requests.post(
+        url=f"{NOTION_API_URL}/pages",
+        headers=_headers(token),
+        json={
+            "parent": {"data_source_id": data_source_id, "type": "data_source_id"},
+            "properties": properties,
+        },
+    )
+
+    res.raise_for_status()
+    return _task_from_page(res.json())
 
 
 if __name__ == "__main__":
