@@ -81,6 +81,34 @@ describe("Dashboard refresh", () => {
     expect(screen.getByText(/Last refreshed/)).toBeTruthy();
   });
 
+  it("adopts the newly loaded day when date navigation remounts it", () => {
+    const initial = makeToday();
+    const nextDay = makeToday({
+      day: "2026-09-21",
+      scheduled_tasks: [
+        {
+          id: "task-next-day",
+          name: "Plan tomorrow",
+          done: false,
+          scheduled: "2026-09-21",
+          due: null,
+          project_name: null,
+        },
+      ],
+    });
+    const { rerender } = render(
+      <Dashboard key={initial.day} initialToday={initial} {...baseProps} />,
+    );
+
+    rerender(
+      <Dashboard key={nextDay.day} initialToday={nextDay} {...baseProps} />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Tomorrow." })).toBeTruthy();
+    expect(screen.getByText("Plan tomorrow")).toBeTruthy();
+    expect(screen.queryByText("Write report")).toBeNull();
+  });
+
   it("swaps in fresh data on a successful refresh", async () => {
     const user = userEvent.setup();
     const initial = makeToday();
