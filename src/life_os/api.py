@@ -1,8 +1,9 @@
 from collections.abc import Callable
 from datetime import date
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, field_validator
+from requests import HTTPError, RequestException
 
 from life_os.models.calendar import CalendarEvent
 from life_os.models.notion import Task, TaskCreate, TaskFetchResult
@@ -55,8 +56,29 @@ def create_app(
 
         @app.post("/tasks")
         def create_task_endpoint(request: CreateTaskRequest) -> Task:
-            return create_task(
-                TaskCreate(name=request.name, scheduled=request.scheduled, due=request.due)
-            )
+            try:
+                return create_task(
+                    TaskCreate(name=request.name, scheduled=request.scheduled, due=request.due)
+                )
+            except HTTPError as error:
+                status = error.response.status_code if error.response is not None else None
+                if status == 403:
+                    detail = (
+                        "Notion refused task creation. Enable Insert content for the "
+                        "Life OS connection and try again."
+                    )
+                elif status == 400:
+                    detail = (
+                        "Notion rejected the task properties. Check the configured task "
+                        "data source schema."
+                    )
+                else:
+                    detail = "Notion could not create the task. Try again."
+                raise HTTPException(status_code=502, detail=detail) from error
+            except RequestException as error:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Notion could not be reached. Try again.",
+                ) from error
 
     return app

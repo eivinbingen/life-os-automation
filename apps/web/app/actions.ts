@@ -60,11 +60,17 @@ export async function createTask(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(3000),
     });
 
     if (!response.ok) {
-      return { ok: false, error: "Could not save the task" };
+      let error = "Could not save the task";
+      try {
+        const payload = (await response.json()) as { detail?: unknown };
+        if (typeof payload.detail === "string") error = payload.detail;
+      } catch {
+        // Keep the safe fallback when the local API did not return JSON.
+      }
+      return { ok: false, error };
     }
 
     return { ok: true, name };

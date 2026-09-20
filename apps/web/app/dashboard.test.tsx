@@ -226,6 +226,10 @@ describe("Dashboard refresh", () => {
       (screen.getByRole("button", { name: "Refresh" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "+ Add task" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
 
     resolveCompletion();
     await waitFor(() => {

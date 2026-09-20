@@ -180,6 +180,39 @@ describe("Task capture", () => {
     expect(createTask).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps capture pending until the post-save refresh finishes", async () => {
+    const user = userEvent.setup();
+    createTask.mockResolvedValue({ ok: true, name: "Slow refresh task" });
+    let resolveRefresh: (result: RefreshResult) => void = () => {};
+    refreshToday.mockImplementation(
+      () =>
+        new Promise<RefreshResult>((resolve) => {
+          resolveRefresh = resolve;
+        }),
+    );
+    renderDashboard();
+
+    const input = await openCapture(user);
+    await user.type(input, "Slow refresh task");
+    await user.click(screen.getByRole("button", { name: "Add" }));
+
+    await waitFor(() => {
+      expect(refreshToday).toHaveBeenCalledWith("2026-09-20");
+    });
+    expect(
+      (screen.getByRole("button", { name: "Refreshing…" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+
+    resolveRefresh({ ok: true, today: makeToday() });
+    await waitFor(() => {
+      expect(
+        (screen.getByRole("button", { name: "Refresh" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
+    });
+  });
+
   it("still confirms the save when the task does not belong on the selected day", async () => {
     const user = userEvent.setup();
     createTask.mockResolvedValue({ ok: true, name: "Later task" });

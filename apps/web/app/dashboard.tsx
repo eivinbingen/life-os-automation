@@ -27,7 +27,7 @@ import {
 } from "./task-completion";
 
 type DashboardOperations = {
-  refresh: () => void;
+  refresh: () => Promise<void>;
   isRefreshing: boolean;
   capturePending: boolean;
   setCapturePending: (pending: boolean) => void;
@@ -258,7 +258,7 @@ export function Dashboard({
   const refreshControls = { refresh: () => void refresh(), isRefreshing, lastRefreshedAt };
 
   const operations: DashboardOperations = {
-    refresh: () => void refresh(),
+    refresh,
     isRefreshing,
     capturePending,
     setCapturePending,

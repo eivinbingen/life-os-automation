@@ -1,6 +1,7 @@
 from datetime import date
 
 from fastapi.testclient import TestClient
+from requests import HTTPError, Response
 
 from life_os.api import create_app
 from life_os.models.notion import Task, TaskCreate, TaskFetchResult
@@ -118,3 +119,31 @@ def test_create_task_rejects_blank_name():
     response = client.post("/tasks", json={"name": "   "})
 
     assert response.status_code == 422
+
+
+def test_create_task_explains_missing_notion_insert_capability():
+    def fetch_events(day):
+        return []
+
+    def fetch_tasks(day):
+        return []
+
+    def set_done(task_id, done):
+        return True
+
+    def create(request):
+        notion_response = Response()
+        notion_response.status_code = 403
+        raise HTTPError(response=notion_response)
+
+    client = TestClient(create_app(fetch_events, fetch_tasks, set_done, create))
+
+    response = client.post("/tasks", json={"name": "Buy oat milk"})
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "detail": (
+            "Notion refused task creation. Enable Insert content for the "
+            "Life OS connection and try again."
+        )
+    }

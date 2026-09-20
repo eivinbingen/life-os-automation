@@ -6,6 +6,7 @@ import type { CreateTaskResult } from "./actions";
 import { createTask } from "./actions";
 import { formatDay } from "./date-utils";
 import { useDashboardOperations } from "./dashboard";
+import { useTaskCompletion } from "./task-completion";
 
 export function TaskCapture({ selectedDay }: { selectedDay: string }) {
   const formId = useId();
@@ -25,7 +26,9 @@ export function TaskCapture({ selectedDay }: { selectedDay: string }) {
     setCapturePending,
     setSavedNotice,
   } = useDashboardOperations();
-  const blocked = pending || isRefreshing || capturePending;
+  const { pendingIds } = useTaskCompletion();
+  const completionPending = pendingIds.size > 0;
+  const blocked = pending || isRefreshing || capturePending || completionPending;
   const nameBlank = name.trim().length === 0;
 
   function openCapture() {
@@ -77,7 +80,7 @@ export function TaskCapture({ selectedDay }: { selectedDay: string }) {
         type="button"
         className="add-task-button"
         onClick={openCapture}
-        disabled={isRefreshing || capturePending}
+        disabled={isRefreshing || capturePending || completionPending}
       >
         + Add task
       </button>
