@@ -46,7 +46,7 @@ Each tool works fairly well individually but no single interface that connects t
 
 ## 5. Target Experience
 
-I want the finished product to make it possible to just open the dashboard and immediately get an overview of my day and what needs to be done. It should shove my calender and tasks, and possibly later suggested priorities. Should also be able to quickly capture new tasks. Some context from current goals and projects would also be nice.
+I want the finished product to make it possible to open the dashboard and immediately understand my day and what needs to be done. Today should combine calendar commitments, tasks, and quick task capture in a lean interface. It should also keep longer-term direction visible through a compact list of active goals, with each goal indicating its open tasks for the selected day.
 
 A weekly overview that eventually makes it possible to both review the previous week and plan the next one in a simple way.
 
