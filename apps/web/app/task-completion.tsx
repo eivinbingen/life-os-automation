@@ -13,6 +13,7 @@ type TaskCompletionContextValue = {
   doneById: Record<string, boolean>;
   failedIds: Set<string>;
   pendingIds: Set<string>;
+  refreshInProgress: boolean;
   setTaskDone: (taskId: string, done: boolean) => Promise<void>;
 };
 
@@ -23,9 +24,11 @@ const TaskCompletionContext = createContext<TaskCompletionContextValue | null>(
 export function TaskCompletionProvider({
   children,
   tasks,
+  refreshInProgress = false,
 }: {
   children: React.ReactNode;
   tasks: InitialTask[];
+  refreshInProgress?: boolean;
 }) {
   const [doneById, setDoneById] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(tasks.map((task) => [task.id, task.done])),
@@ -60,7 +63,7 @@ export function TaskCompletionProvider({
 
   return (
     <TaskCompletionContext.Provider
-      value={{ doneById, failedIds, pendingIds, setTaskDone }}
+      value={{ doneById, failedIds, pendingIds, refreshInProgress, setTaskDone }}
     >
       {children}
     </TaskCompletionContext.Provider>

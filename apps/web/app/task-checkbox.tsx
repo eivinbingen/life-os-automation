@@ -8,7 +8,7 @@ type TaskCheckboxProps = {
 };
 
 export function TaskCheckbox({ taskId, taskName }: TaskCheckboxProps) {
-  const { doneById, failedIds, pendingIds, setTaskDone } =
+  const { doneById, failedIds, pendingIds, refreshInProgress, setTaskDone } =
     useTaskCompletion();
   const done = doneById[taskId] ?? false;
   const failed = failedIds.has(taskId);
@@ -19,9 +19,15 @@ export function TaskCheckbox({ taskId, taskName }: TaskCheckboxProps) {
       aria-label={taskName}
       checked={done}
       className={`task-checkbox${failed ? " task-checkbox-error" : ""}`}
-      disabled={saving}
+      disabled={saving || refreshInProgress}
       onChange={(event) => void setTaskDone(taskId, event.target.checked)}
-      title={failed ? "Could not save task" : undefined}
+      title={
+        failed
+          ? "Could not save task"
+          : refreshInProgress
+            ? "Refreshing data"
+            : undefined
+      }
       type="checkbox"
     />
   );
