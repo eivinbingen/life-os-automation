@@ -91,7 +91,7 @@ The application will initially read from and combine these systems. It should no
 
 ## 10. First Product Milestone
 
-The first milestone is a local, read-only Today dashboard that:
+The first milestone is a local Today dashboard that:
 
 - Retrieves today's events from Google Calendar.
 - Retrieves relevant tasks from Notion.
@@ -99,14 +99,16 @@ The first milestone is a local, read-only Today dashboard that:
 - Makes the relationship between commitments, tasks, projects, and goals visible.
 - Handles unavailable integrations gracefully.
 
-This milestone will test whether a custom interface provides meaningful value before introducing a database or migrating existing workflows.
+The dashboard began read-only. It now includes the first selected write action: completing a task updates its `Done` checkbox in Notion. Calendar events and all other task fields remain read-only, and further write actions are added one vertical slice at a time (see the [roadmap](roadmap.md)).
+
+This milestone tests whether a custom interface provides meaningful value before introducing a database or migrating existing workflows.
 
 ## 11. Longer-Term Direction
 
 If the initial dashboard proves useful:
 
 1. Add the Weekly Review and Studies experiences.
-2. Introduce carefully selected write actions and quick capture.
+2. Continue adding carefully selected write actions and quick capture.
 3. Expose reusable domain operations through MCP.
 4. Add persistence for application-specific information that lacks an appropriate existing home.
 5. Consider PostgreSQL when the application needs history, preferences, cached data, or native entities.

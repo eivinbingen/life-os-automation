@@ -1,59 +1,64 @@
 # Roadmap
 
-## Phase 1: Foundation
+## Completed: Foundation
 
-- Preserve the existing monthly finance review.
-- Establish integration, domain, service, API, and frontend boundaries.
-- Document the product vision, architecture, and domain model.
-- Add tests around existing and newly extracted behavior.
+- Preserved the existing monthly finance review.
+- Established integration, domain, service, API, and frontend boundaries.
+- Documented the product vision, architecture, and domain model.
+- Added tests around existing and newly extracted behavior.
 
-## Phase 2: Today Dashboard
+## Completed: Today Dashboard (v1)
 
-Build a local, read-only dashboard that combines:
+The local Today dashboard combines, for the selected day:
 
-- Today's Google Calendar events.
+- Google Calendar events.
 - Scheduled, due, and overdue Notion tasks.
-- Related projects and goals.
-- Clear integration and error status.
+- Project context on tasks (#4).
+- Clear integration and error status, including when the backend is unavailable (#5).
+- Day navigation (#1).
 
-This is the first vertical slice and current priority.
+The complete application starts with one local command (#3). Today v1 also
+includes the first selected write action: completing a task updates its
+`Done` checkbox in Notion. Calendar events and all other task fields remain
+read-only.
 
-## Phase 3: Weekly Review and Studies
+## Current: Today Dashboard (v2)
 
-- Build a guided Weekly Review.
-- Show unfinished work and tasks requiring processing.
-- Add upcoming deadlines and calendar commitments.
-- Create a Studies view covering courses, assessments, and academic workload.
+Agreed scope, delivered as separate vertical slices:
 
-## Phase 4: Selected Write Actions
+- Refresh the selected day's data without reloading the page (#6).
+- Capture a new Notion task from Today, with Scheduled defaulting to the
+  selected day and an optional Due date (#7).
+- Edit a task's name, Scheduled, and Due from Today. Overdue behavior is
+  revised so an incomplete task scheduled on the selected day also appears in
+  Scheduled while keeping its overdue indicator (#8).
 
-Add carefully chosen actions such as:
+Goal, course, and area context is under discovery in #15. Whether that
+context belongs to v2 or a later version is explicitly undecided until that
+discovery concludes.
 
-- Quick task capture.
-- Scheduling a task.
-- Completing a task.
-- Processing tasks missing context.
+## Following milestones (order not yet decided)
 
-Writes should be explicit, reversible where possible, and added only when they reduce meaningful friction.
+- Weekly Review: a read-only overview of the coming week's commitments and
+  important tasks (#9).
+- Studies: active courses and upcoming academic work (#10).
+- Finance: the monthly forecast-versus-actual review in the web app (#11).
 
-## Phase 5: MCP and Automation
+These are the next agreed milestones after Today v2. Their delivery order
+will be decided when Today v2 is complete.
 
-- Expose existing domain services through MCP.
-- Allow trusted AI clients to retrieve Life OS context and perform approved actions.
-- Expand weekly and monthly review automation.
-- Avoid duplicating logic between MCP, the web application, and scripts.
+## Later direction
 
-## Phase 6: Persistence and Hosting
+- Broader task editing, kept separate from read-only context as described in
+  #15.
+- MCP over the same domain services.
+- PostgreSQL, once the application needs history, preferences, cached data,
+  or native entities.
+- Hosting, once remote access justifies authentication and operational
+  complexity.
 
-Introduce PostgreSQL only when required for:
-
-- Historical data.
-- Preferences.
-- Caching.
-- Synchronization state.
-- Application-native entities.
-
-Consider hosting after the local application proves useful enough to justify authentication, security, and operational complexity.
+Detailed requirements belong in their own issues; this section keeps only
+direction.
 
 ## Current Non-Priorities
 
