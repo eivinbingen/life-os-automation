@@ -198,7 +198,14 @@ export function Dashboard({
     refreshInFlight.current = true;
     setIsRefreshing(true);
 
-    const result = await refreshToday(selectedDay);
+    let result;
+    try {
+      result = await refreshToday(selectedDay);
+    } catch {
+      // Defense in depth: the server action reports failures as results,
+      // but anything thrown here must still end the pending state.
+      result = { ok: false as const, error: "Refresh failed unexpectedly" };
+    }
 
     if (result.ok) {
       setToday(result.today);

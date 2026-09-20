@@ -124,6 +124,26 @@ describe("Dashboard refresh", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
   });
 
+  it("recovers when the server action throws instead of returning a result", async () => {
+    const user = userEvent.setup();
+    refreshToday.mockRejectedValue(new Error("connection refused"));
+    renderDashboard(makeToday());
+
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+
+    // The pending state ends, previous data stays, and the failure is shown.
+    await waitFor(() => {
+      expect(
+        screen.getByText("Refresh failed. Showing the last loaded information."),
+      ).toBeTruthy();
+    });
+    expect(
+      (screen.getByRole("button", { name: "Refresh" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(screen.getByText("Write report")).toBeTruthy();
+  });
+
   it("clears the refresh error after a subsequent successful refresh", async () => {
     const user = userEvent.setup();
     refreshToday

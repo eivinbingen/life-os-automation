@@ -43,16 +43,27 @@ export async function refreshToday(day: string): Promise<RefreshResult> {
     return { ok: false, error: "LIFE_OS_API_URL is not configured" };
   }
 
-  const response = await fetch(
-    `${apiUrl}/today?day=${encodeURIComponent(day)}`,
-    { cache: "no-store" },
-  );
+  try {
+    const response = await fetch(
+      `${apiUrl}/today?day=${encodeURIComponent(day)}`,
+      {
+        cache: "no-store",
+        // The dashboard should report a dead backend promptly instead of
+        // leaving the user staring at a pending refresh forever.
+        signal: AbortSignal.timeout(3000),
+      },
+    );
 
-  if (!response.ok) {
-    return { ok: false, error: "Could not load today's data" };
+    if (!response.ok) {
+      return { ok: false, error: "Could not load today's data" };
+    }
+
+    return { ok: true, today: (await response.json()) as Today };
+  } catch {
+    // Connection refused, timeout, or any other network failure: report it
+    // as a result instead of throwing out of the server action.
+    return { ok: false, error: "The Life OS service could not be reached" };
   }
-
-  return { ok: true, today: (await response.json()) as Today };
 }
 
 export async function updateTaskDone(taskId: string, done: boolean) {
