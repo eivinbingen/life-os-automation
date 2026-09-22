@@ -2,6 +2,16 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 
 
+class _Unset:
+    """Sentinel marking a field an update deliberately leaves untouched."""
+
+    def __repr__(self) -> str:
+        return "UNSET"
+
+
+UNSET = _Unset()
+
+
 @dataclass
 class Task:
     id: str
@@ -20,6 +30,19 @@ class TaskCreate:
     name: str
     scheduled: date | None = None
     due: date | None = None
+
+
+@dataclass
+class TaskUpdate:
+    """Task fields deliberately edited from Life OS.
+
+    A field left as UNSET preserves the Notion value; an explicit None
+    clears it. The adapter writes only the fields that are set.
+    """
+
+    name: str | None | _Unset = UNSET
+    scheduled: date | None | _Unset = UNSET
+    due: date | None | _Unset = UNSET
 
 
 @dataclass

@@ -3,7 +3,7 @@ from datetime import date
 from requests import RequestException
 
 from life_os.integrations import notion_tasks
-from life_os.models.notion import TaskCreate
+from life_os.models.notion import TaskCreate, TaskUpdate
 
 
 class FakeResponse:
@@ -234,3 +234,80 @@ def test_day_fetch_keeps_exact_scheduled_day_filter(monkeypatch):
     assert {"property": "Scheduled", "date": {"equals": "2026-09-14"}} in (
         bodies[0]["filter"]["or"][0]["and"]
     )
+
+
+def test_update_task_sends_empty_properties_when_nothing_is_set(monkeypatch):
+    patch_requests = []
+
+    def patch(**kwargs):
+        patch_requests.append(kwargs)
+        return FakeResponse({"id": "task-1", "properties": {}})
+
+    monkeypatch.setattr(notion_tasks.requests, "patch", patch)
+
+    # Rescheduling alone: every other field is left untouched.
+    assert notion_tasks.update_task(
+        token="secret", task_id="task-1", update=TaskUpdate(scheduled=date(2026, 9, 21))
+    )
+
+    body = patch_requests[0]["json"]["properties"]
+    assert body == {"Scheduled": {"date": {"start": "2026-09-21"}}}
+
+
+def test_update_task_preserves_untouched_fields_and_clears_explicit_nulls(monkeypatch):
+    patch_requests = []
+
+    def patch(**kwargs):
+        patch_requests.append(kwargs)
+        return FakeResponse({"id": "task-1", "properties": {}})
+
+    monkeypatch.setattr(notion_tasks.requests, "patch", patch)
+
+    # A timed date is being replaced with a date-only value; Due is cleared.
+    assert notion_tasks.update_task(
+        token="secret",
+        task_id="task-1",
+        update=TaskUpdate(name="Renamed task", due=None),
+        done=False,
+    )
+
+    body = patch_requests[0]["json"]["properties"]
+    assert body["Name"] == {"title": [{"text": {"content": "Renamed task"}}]}
+    assert body["Due"] == {"date": None}
+    assert body["Done"] == {"checkbox": False}
+    # Untouched Scheduled is omitted entirely, so its time is preserved.
+    assert "Scheduled" not in body
+
+
+def test_update_task_writes_dates_as_date_only(monkeypatch):
+    patch_requests = []
+
+    def patch(**kwargs):
+        patch_requests.append(kwargs)
+        return FakeResponse({"id": "task-1", "properties": {}})
+
+    monkeypatch.setattr(notion_tasks.requests, "patch", patch)
+
+    assert notion_tasks.update_task(
+        token="secret",
+        task_id="task-1",
+        update=TaskUpdate(scheduled=date(2026, 9, 22), due=date(2026, 9, 30)),
+    )
+
+    body = patch_requests[0]["json"]["properties"]
+    assert body["Scheduled"] == {"date": {"start": "2026-09-22"}}
+    assert body["Due"] == {"date": {"start": "2026-09-30"}}
+
+
+def test_update_task_failure_raises_request_error(monkeypatch):
+    def patch(**kwargs):
+        return FakeResponse({}, error=RequestException("Notion unavailable"))
+
+    monkeypatch.setattr(notion_tasks.requests, "patch", patch)
+
+    try:
+        notion_tasks.update_task(token="secret", task_id="task-1", update=TaskUpdate(name="x"))
+    except RequestException:
+        pass
+    else:
+        raise AssertionError("expected RequestException")

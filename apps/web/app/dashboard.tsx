@@ -10,7 +10,7 @@ import {
 } from "react";
 import Link from "next/link";
 
-import type { Today } from "./actions";
+import type { Task, Today } from "./actions";
 import { refreshToday } from "./actions";
 import {
   APP_TIME_ZONE,
@@ -20,6 +20,7 @@ import {
 } from "./date-utils";
 import { TaskCapture } from "./task-capture";
 import { TaskCheckbox } from "./task-checkbox";
+import { TaskEditPanel } from "./task-edit";
 import {
   OpenTaskCount,
   TaskCompletionProvider,
@@ -89,10 +90,14 @@ function TaskList({
   tasks,
   dateField,
   emptyMessage,
+  overdueIds,
+  onEdit,
 }: {
   tasks: Today["scheduled_tasks"];
   dateField: "scheduled" | "due";
   emptyMessage: string;
+  overdueIds?: Set<string>;
+  onEdit: (task: Today["scheduled_tasks"][number]) => void;
 }) {
   if (tasks.length === 0) {
     return <p className="empty-tasks">{emptyMessage}</p>;
@@ -104,7 +109,17 @@ function TaskList({
         <li className="task-row" key={task.id}>
           <TaskCheckbox taskId={task.id} taskName={task.name} />
           <div className="task-copy">
-            <span className="task-name">{task.name}</span>
+            <button
+              type="button"
+              className="task-name task-name-button"
+              onClick={() => onEdit(task)}
+              aria-label={`Edit task ${task.name}`}
+            >
+              {task.name}
+            </button>
+            {overdueIds?.has(task.id) && (
+              <span className="task-overdue-tag">Overdue</span>
+            )}
             {task.project_name && (
               <span className="task-project">
                 <span>Project</span>
@@ -195,6 +210,8 @@ export function Dashboard({
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [capturePending, setCapturePending] = useState(false);
+  // The task currently open in the edit panel; null when closed.
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   // Lives outside the completion provider so the remount that re-seeds
   // checkbox state cannot wipe a capture's save confirmation.
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
@@ -217,6 +234,12 @@ export function Dashboard({
     [today],
   );
   const taskIds = useMemo(() => tasks.map((task) => task.id), [tasks]);
+  // The overdue rule stays in the domain service; the Scheduled row only
+  // reads overdue-section membership to show its indicator.
+  const overdueIds = useMemo(
+    () => new Set(today.overdue_tasks.map((task) => task.id)),
+    [today],
+  );
   const events = useMemo(
     () => [...today.events].sort((a, b) => a.start.localeCompare(b.start)),
     [today],
@@ -299,7 +322,7 @@ export function Dashboard({
         <div className="overview-strip" aria-label="Selected day at a glance">
           <div className="overview-item"><strong>{today.events.length}</strong><span>Calendar events</span></div>
           <div className="overview-item"><strong><OpenTaskCount taskIds={taskIds} /></strong><span>Open tasks</span></div>
-          <div className="overview-item"><strong>{today.overdue_tasks.length}</strong><span>Overdue</span></div>
+          <div className="overview-item"><strong><OpenTaskCount taskIds={today.overdue_tasks.map((task) => task.id)} /></strong><span>Overdue</span></div>
         </div>
 
         {refreshError && (
@@ -371,7 +394,7 @@ export function Dashboard({
                 <div><span className="section-kicker">ON YOUR RADAR</span><h2 id="scheduled-heading">Scheduled</h2></div>
                 <span className="count-badge"><OpenTaskCount taskIds={today.scheduled_tasks.map((task) => task.id)} /></span>
               </div>
-              <TaskList tasks={today.scheduled_tasks} dateField="scheduled" emptyMessage={notionUnavailable ? "Tasks could not be loaded." : `Nothing scheduled for ${isCurrentDay ? "today" : "this day"}.`} />
+              <TaskList tasks={today.scheduled_tasks} dateField="scheduled" emptyMessage={notionUnavailable ? "Tasks could not be loaded." : `Nothing scheduled for ${isCurrentDay ? "today" : "this day"}.`} overdueIds={overdueIds} onEdit={setEditingTask} />
             </section>
 
             <section className="panel task-panel" aria-labelledby="due-heading">
@@ -379,7 +402,7 @@ export function Dashboard({
                 <div><span className="section-kicker">COMING UP</span><h2 id="due-heading">Due {isCurrentDay ? "today" : "this day"}</h2></div>
                 <span className="count-badge"><OpenTaskCount taskIds={today.due_tasks.map((task) => task.id)} /></span>
               </div>
-              <TaskList tasks={today.due_tasks} dateField="due" emptyMessage={notionUnavailable ? "Tasks could not be loaded." : `No deadlines ${isCurrentDay ? "today" : "this day"}.`} />
+              <TaskList tasks={today.due_tasks} dateField="due" emptyMessage={notionUnavailable ? "Tasks could not be loaded." : `No deadlines ${isCurrentDay ? "today" : "this day"}.`} onEdit={setEditingTask} />
             </section>
 
             <section className="panel task-panel overdue-panel" aria-labelledby="overdue-heading">
@@ -387,7 +410,7 @@ export function Dashboard({
                 <div><span className="section-kicker">NEEDS ATTENTION</span><h2 id="overdue-heading">Overdue</h2></div>
                 <span className="count-badge overdue-count"><OpenTaskCount taskIds={today.overdue_tasks.map((task) => task.id)} /></span>
               </div>
-              <TaskList tasks={today.overdue_tasks} dateField="due" emptyMessage={notionUnavailable ? "Tasks could not be loaded." : "All caught up. Nice work."} />
+              <TaskList tasks={today.overdue_tasks} dateField="due" emptyMessage={notionUnavailable ? "Tasks could not be loaded." : "All caught up. Nice work."} onEdit={setEditingTask} />
             </section>
           </div>
         </div>
@@ -400,6 +423,13 @@ export function Dashboard({
           </span>
         </footer>
       </div>
+      {editingTask && (
+        <TaskEditPanel
+          task={editingTask}
+          overdue={overdueIds.has(editingTask.id)}
+          onClose={() => setEditingTask(null)}
+        />
+      )}
       </TaskCompletionProvider>
     </DashboardOperationsContext.Provider>
   );

@@ -14,7 +14,7 @@ from life_os.integrations.notion_tasks import (
     create_task,
     fetch_tasks_for_day,
     fetch_tasks_for_range,
-    set_task_done,
+    update_task,
 )
 
 
@@ -41,11 +41,11 @@ def main():
         page_size=100,
     )
 
-    set_done = partial(set_task_done, token)
+    update = partial(update_task, token)
     create = partial(create_task, token, data_source_id)
 
     app = create_app(
-        fetch_events, fetch_tasks, set_done, create, fetch_week_events, fetch_week_tasks
+        fetch_events, fetch_tasks, update, create, fetch_week_events, fetch_week_tasks
     )
     uvicorn.run(app, host="127.0.0.1", port=8000)
 

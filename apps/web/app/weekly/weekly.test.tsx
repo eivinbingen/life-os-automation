@@ -37,7 +37,7 @@ it.each(["network", "http", "json", "configuration"])("keeps the requested week 
   if (kind === "network") fetcher.mockRejectedValue(new Error("private details"));
   else fetcher.mockResolvedValue({ok: kind !== "http", json: async () => { throw new Error("bad json"); }});
   vi.stubGlobal("fetch", fetcher);
-  render(await WeeklyPage({searchParams: Promise.resolve({day: "2026-09-17"})}));
+  render(await WeeklyPage({params: Promise.resolve({}), searchParams: Promise.resolve({day: "2026-09-17"})}));
   const alert = screen.getByRole("alert");
   expect(within(alert).getByRole("link", {name: "Try again"}).getAttribute("href")).toBe("/weekly?day=2026-09-14");
   expect(alert.textContent).not.toContain("private details");
@@ -51,7 +51,7 @@ it("loads the same week successfully when retried", async () => {
     .mockResolvedValueOnce({ok: true, json: async () => week});
   vi.stubGlobal("fetch", fetcher);
   expect((await refreshWeek("2026-09-14")).ok).toBe(false);
-  render(await WeeklyPage({searchParams: Promise.resolve({day: "2026-09-14"})}));
+  render(await WeeklyPage({params: Promise.resolve({}), searchParams: Promise.resolve({day: "2026-09-14"})}));
   expect(screen.queryByRole("alert")).toBeNull();
   expect(screen.getByLabelText("Week at a glance")).toBeTruthy();
   expect(fetcher.mock.calls.every(([url]) => url.endsWith("day=2026-09-14"))).toBe(true);
