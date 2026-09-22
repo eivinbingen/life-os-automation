@@ -73,16 +73,7 @@ def fetch_tasks_for_range(
                 {"property": "Done", "checkbox": {"equals": False}},
                 {
                     "or": [
-                        {
-                            "and": [
-                                {"property": "Scheduled", "date": {
-                                    "on_or_after": start_day.isoformat()
-                                }},
-                                {"property": "Scheduled", "date": {
-                                    "on_or_before": end_day.isoformat()
-                                }},
-                            ]
-                        },
+                        {"property": "Scheduled", "date": {"on_or_after": start_day.isoformat()}},
                         {"property": "Due", "date": {"on_or_before": end_day.isoformat()}},
                     ]
                 },
