@@ -48,7 +48,17 @@ Each tool works fairly well individually but no single interface that connects t
 
 I want the finished product to make it possible to open the dashboard and immediately understand my day and what needs to be done. Today should combine calendar commitments, tasks, and quick task capture in a lean interface. It should also keep longer-term direction visible through a compact list of active goals, with each goal indicating its open tasks for the selected day.
 
-A weekly overview that eventually makes it possible to both review the previous week and plan the next one in a simple way.
+A guided Weekly Review that recalibrates the system: Look Back → Clean Up →
+Review Direction → Look Ahead → Complete. V2 combines objective context, manual
+wins/reflection, direct contextual decisions, and saved review history. See the
+[Weekly Review V2 design](weekly-review-v2.md) for the agreed workflow and scope.
+Today is for execution; Weekly Review is for recalibration; Studies and Finance
+help understand a domain; Goals & Projects define direction. Analytics belongs
+later as a way to understand patterns over time.
+
+Weekly Review V2 does not infer importance or introduce health rules, suggestions,
+weekly priorities, analytics, or habits. Those remain V3/later ideas, after the
+manual workflow has proved useful.
 
 A studies dashboard that structures my studies.
 
