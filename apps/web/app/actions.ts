@@ -32,8 +32,27 @@ export type IntegrationStatus = {
   error: string | null;
 };
 
+export type WeekDay = {
+  day: string;
+  events: CalendarEvent[];
+  scheduled_tasks: Task[];
+  due_tasks: Task[];
+};
+
+export type Week = {
+  start: string;
+  end: string;
+  days: WeekDay[];
+  overdue_tasks: Task[];
+  statuses: IntegrationStatus[];
+};
+
 export type RefreshResult =
   | { ok: true; today: Today }
+  | { ok: false; error: string };
+
+export type RefreshWeekResult =
+  | { ok: true; week: Week }
   | { ok: false; error: string };
 
 export type CreateTaskResult =
@@ -156,6 +175,32 @@ export async function refreshToday(day: string): Promise<RefreshResult> {
     }
 
     return { ok: true, today: (await response.json()) as Today };
+  } catch {
+    // Connection refused, timeout, or any other network failure: report it
+    // as a result instead of throwing out of the server action.
+    return { ok: false, error: "The Life OS service could not be reached" };
+  }
+}
+
+export async function refreshWeek(day: string): Promise<RefreshWeekResult> {
+  const apiUrl = process.env.LIFE_OS_API_URL;
+
+  if (!apiUrl) {
+    return { ok: false, error: "LIFE_OS_API_URL is not configured" };
+  }
+
+  try {
+    const response = await fetch(`${apiUrl}/week?day=${encodeURIComponent(day)}`, {
+      cache: "no-store",
+      // Report a dead backend promptly instead of a pending refresh forever.
+      signal: AbortSignal.timeout(3000),
+    });
+
+    if (!response.ok) {
+      return { ok: false, error: "Could not load the week's data" };
+    }
+
+    return { ok: true, week: (await response.json()) as Week };
   } catch {
     // Connection refused, timeout, or any other network failure: report it
     // as a result instead of throwing out of the server action.

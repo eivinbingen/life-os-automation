@@ -27,6 +27,13 @@ export function shiftDay(day: string, amount: number) {
   return date.toISOString().slice(0, 10);
 }
 
+export function startOfWeek(day: string) {
+  const date = new Date(`${day}T12:00:00Z`);
+  // Sunday is 0; shift back to Monday.
+  const back = (date.getUTCDay() + 6) % 7;
+  return shiftDay(day, -back);
+}
+
 export function dayHeading(day: string, localDay: string) {
   if (day === localDay) return "Today";
   if (day === shiftDay(localDay, -1)) return "Yesterday";

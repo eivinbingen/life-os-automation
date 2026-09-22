@@ -50,6 +50,18 @@ Press `Ctrl+C` once to stop both services. The startup command checks required l
 
 The dashboard reads events from Google Calendar and tasks from Notion. Marking a task complete updates its `Done` checkbox in Notion. Calendar events and other task fields remain read-only.
 
+## Weekly overview (read-only V1)
+
+Open `/weekly` or choose Weekly Review in the sidebar to browse Monday–Sunday
+commitments and tasks. “Overdue before this week” means incomplete tasks due before
+that week's Monday; it is not today's complete overdue queue. Counts represent
+unique tasks/events, and multi-day events appear on each covered day. If the
+backend is unavailable, retry preserves the requested week.
+
+This is a transitional overview. The guided workflow, contextual writes, and saved
+history are planned in [Weekly Review V2](docs/weekly-review-v2.md); they are not
+implemented by this page.
+
 ## Run the monthly finance review
 
 The finance review runs independently from the Today dashboard. It requires a YNAB API token and a Google service account with read access to the forecast spreadsheet.
