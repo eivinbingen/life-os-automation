@@ -38,9 +38,9 @@ def create_calendar_event(google_event: dict) -> CalendarEvent:
     )
 
 
-def get_events_for_day(service, day: date) -> list[CalendarEvent]:
-    start_bound = datetime.combine(day, time.min, tzinfo=ZoneInfo("Europe/Zurich"))
-    next_day = day + timedelta(days=1)
+def get_events_for_range(service, start_day: date, end_day: date) -> list[CalendarEvent]:
+    next_day = end_day + timedelta(days=1)
+    start_bound = datetime.combine(start_day, time.min, tzinfo=ZoneInfo("Europe/Zurich"))
     end_bound = datetime.combine(next_day, time.min, tzinfo=ZoneInfo("Europe/Zurich"))
 
     try:
@@ -63,6 +63,10 @@ def get_events_for_day(service, day: date) -> list[CalendarEvent]:
         e = create_calendar_event(item)
         events.append(e)
     return events
+
+
+def get_events_for_day(service, day: date) -> list[CalendarEvent]:
+    return get_events_for_range(service, day, day)
 
 
 if __name__ == "__main__":
