@@ -77,14 +77,14 @@ def test_done_tasks_are_excluded_everywhere():
     assert overview.due_tasks == []
 
 
-def test_overdue_wins_over_scheduled():
-    # Product rule: a passed deadline outranks today's plan,
-    # so the task appears in overdue only.
+def test_scheduled_and_overdue_appears_in_both():
+    # Product rule: a task scheduled on the selected day stays in Scheduled
+    # even when its deadline has passed, and keeps its overdue indicator.
     task = Task(id="1", name="overlap", scheduled=DAY, due=date(2026, 9, 16))
     overview = build([task])
 
     assert names(overview.overdue_tasks) == ["overlap"]
-    assert overview.scheduled_tasks == []
+    assert names(overview.scheduled_tasks) == ["overlap"]
     assert overview.due_tasks == []
 
 
@@ -135,6 +135,18 @@ def test_day_is_stored_on_the_overview():
     overview = build([])
 
     assert overview.day == DAY
+
+
+def test_overdue_membership_is_distinct_from_scheduled_membership():
+    # A task scheduled today and overdue yesterday lands in both lists; the
+    # scheduled row derives its overdue indicator from overdue membership.
+    scheduled_and_overdue = Task(id="1", name="both", scheduled=DAY, due=date(2026, 9, 16))
+    scheduled_only = Task(id="2", name="on track", scheduled=DAY)
+    overview = build([scheduled_and_overdue, scheduled_only])
+
+    overdue_ids = {t.id for t in overview.overdue_tasks}
+    assert overdue_ids == {"1"}
+    assert [t.id for t in overview.scheduled_tasks] == ["1", "2"]
 
 
 # --- get_today orchestration ---
