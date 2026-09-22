@@ -177,3 +177,60 @@ def test_create_task_without_dates_sends_no_date_properties(monkeypatch):
     body = created_requests[0]["json"]["properties"]
     assert "Scheduled" not in body
     assert "Due" not in body
+
+
+def test_range_filter_is_bounded_and_keeps_overdue_with_two_compound_levels(monkeypatch):
+    from copy import deepcopy
+
+    requests = []
+
+    def matches(node, done, scheduled, due):
+        if "and" in node:
+            return all(matches(n, done, scheduled, due) for n in node["and"])
+        if "or" in node:
+            return any(matches(n, done, scheduled, due) for n in node["or"])
+        if node["property"] == "Done":
+            return done == node["checkbox"]["equals"]
+        value = scheduled if node["property"] == "Scheduled" else due
+        if value is None:
+            return False
+        op, bound = next(iter(node["date"].items()))
+        return {"equals": value == bound, "on_or_after": value >= bound,
+                "on_or_before": value <= bound}[op]
+
+    def depth(node):
+        children = node.get("and", node.get("or"))
+        return 0 if children is None else 1 + max(map(depth, children))
+
+    def post(**kwargs):
+        requests.append(deepcopy(kwargs["json"]))
+        return FakeResponse({"results": [notion_task("one", None)],
+                             "has_more": len(requests) == 1, "next_cursor": "second"})
+
+    monkeypatch.setattr(notion_tasks.requests, "post", post)
+    result = notion_tasks.fetch_tasks_for_range("secret", "tasks", date(2026, 9, 14),
+                                                date(2026, 9, 20), 100)
+    query = requests[0]["filter"]
+    assert depth(query) <= 2
+    for scheduled in ["2026-09-14", "2026-09-17", "2026-09-20"]:
+        assert matches(query, False, scheduled, None)
+    for scheduled in [None, "2026-09-13", "2026-09-21", "2027-01-01"]:
+        assert not matches(query, False, scheduled, None)
+    assert matches(query, False, "2027-01-01", "2026-09-01")
+    assert not matches(query, True, "2026-09-14", "2026-09-01")
+    assert requests[1]["start_cursor"] == "second"
+    assert [task.id for task in result.tasks] == ["one"]
+
+
+def test_day_fetch_keeps_exact_scheduled_day_filter(monkeypatch):
+    bodies = []
+
+    def post(**kwargs):
+        bodies.append(kwargs["json"])
+        return FakeResponse({"results": [], "has_more": False})
+
+    monkeypatch.setattr(notion_tasks.requests, "post", post)
+    notion_tasks.fetch_tasks_for_day("secret", "tasks", date(2026, 9, 14), 100)
+    assert {"property": "Scheduled", "date": {"equals": "2026-09-14"}} in (
+        bodies[0]["filter"]["or"][0]["and"]
+    )

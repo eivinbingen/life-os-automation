@@ -303,3 +303,40 @@ def test_both_failures_still_return_a_week():
     assert (calendar_status.ok, notion_status.ok) == (False, False)
     assert "500" in calendar_status.error
     assert notion_status.error == "connection refused"
+
+
+def test_events_cover_overlapping_days_with_exclusive_end():
+    events = [
+        CalendarEvent(id="trip", title="Trip", start=datetime(2026, 9, 13),
+                      end=datetime(2026, 9, 16), all_day=True),
+        CalendarEvent(id="night", title="Night", start=datetime(2026, 9, 17, 23),
+                      end=datetime(2026, 9, 18, 2)),
+        CalendarEvent(id="boundary", title="Boundary", start=datetime(2026, 9, 13, 23),
+                      end=datetime(2026, 9, 14)),
+    ]
+    week = build([], events=events + [events[0]])
+    assert [e.id for e in day_named(week, MONDAY).events] == ["trip"]
+    assert [e.id for e in day_named(week, date(2026, 9, 15)).events] == ["trip"]
+    assert day_named(week, date(2026, 9, 16)).events == []
+    assert [e.id for e in day_named(week, DAY).events] == ["night"]
+    assert [e.id for e in day_named(week, date(2026, 9, 18)).events] == ["night"]
+
+
+def test_events_use_zurich_days_across_dst():
+    event = CalendarEvent(
+        id="dst", title="DST night",
+        start=datetime.fromisoformat("2026-10-24T22:30:00+00:00"),
+        end=datetime.fromisoformat("2026-10-26T00:00:00+01:00"),
+    )
+    week = build_week(date(2026, 10, 19), date(2026, 10, 25), [event], [], [])
+    assert all(not day.events for day in week.days[:-1])
+    assert [e.id for e in week.days[-1].events] == ["dst"]
+
+
+def test_duplicate_tasks_are_unique_in_each_semantic_bucket():
+    task = Task(id="one", name="One", scheduled=DAY, due=DAY)
+    overdue = Task(id="late", name="Late", scheduled=DAY, due=date(2026, 9, 1))
+    week = build([task, task, overdue, overdue])
+    assert [t.id for t in day_named(week, DAY).scheduled_tasks] == ["one", "late"]
+    assert [t.id for t in day_named(week, DAY).due_tasks] == ["one"]
+    assert [t.id for t in week.overdue_tasks] == ["late"]

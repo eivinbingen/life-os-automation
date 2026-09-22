@@ -67,79 +67,45 @@ def _task_from_page(notion_page: dict) -> Task:
 def fetch_tasks_for_range(
     token: str, data_source_id: str, start_day: date, end_day: date, page_size: int
 ) -> TaskFetchResult:
-    body = {
-        "filter": {
-            "and": [
-                {"property": "Done", "checkbox": {"equals": False}},
-                {
-                    "or": [
-                        {"property": "Scheduled", "date": {"on_or_after": start_day.isoformat()}},
-                        {"property": "Due", "date": {"on_or_before": end_day.isoformat()}},
-                    ]
-                },
-            ]
-        },
-        "page_size": page_size,
+    # OR of two AND branches stays within Notion's two compound-filter levels.
+    incomplete = {"property": "Done", "checkbox": {"equals": False}}
+    scheduled = [
+        {"property": "Scheduled", "date": {"on_or_after": start_day.isoformat()}},
+        {"property": "Scheduled", "date": {"on_or_before": end_day.isoformat()}},
+    ]
+    if start_day == end_day:
+        scheduled = [{"property": "Scheduled", "date": {"equals": start_day.isoformat()}}]
+    query_filter = {
+        "or": [
+            {"and": [incomplete, *scheduled]},
+            {"and": [incomplete, {"property": "Due", "date": {
+                "on_or_before": end_day.isoformat(),
+            }}]},
+        ],
     }
-    tasks = []
-
+    body = {"filter": query_filter, "page_size": page_size}
+    tasks = {}
     while True:
         res = requests.post(
             url=f"{NOTION_API_URL}/data_sources/{data_source_id}/query",
             headers=_headers(token),
             json=body,
         )
-
         res.raise_for_status()
         data = res.json()
-        for t in data["results"]:
-            task = _task_from_page(t)
-            tasks.append(task)
-
+        for page in data["results"]:
+            task = _task_from_page(page)
+            tasks.setdefault(task.id, task)
         if not data["has_more"]:
             break
         body["start_cursor"] = data["next_cursor"]
-
-    return _resolve_project_names(token, tasks)
+    return _resolve_project_names(token, list(tasks.values()))
 
 
 def fetch_tasks_for_day(
     token: str, data_source_id: str, day: date, page_size: int
 ) -> TaskFetchResult:
-    body = {
-        "filter": {
-            "and": [
-                {"property": "Done", "checkbox": {"equals": False}},
-                {
-                    "or": [
-                        {"property": "Scheduled", "date": {"equals": day.isoformat()}},
-                        {"property": "Due", "date": {"on_or_before": day.isoformat()}},
-                    ]
-                },
-            ]
-        },
-        "page_size": page_size,
-    }
-    tasks = []
-
-    while True:
-        res = requests.post(
-            url=f"{NOTION_API_URL}/data_sources/{data_source_id}/query",
-            headers=_headers(token),
-            json=body,
-        )
-
-        res.raise_for_status()
-        data = res.json()
-        for t in data["results"]:
-            task = _task_from_page(t)
-            tasks.append(task)
-
-        if not data["has_more"]:
-            break
-        body["start_cursor"] = data["next_cursor"]
-
-    return _resolve_project_names(token, tasks)
+    return fetch_tasks_for_range(token, data_source_id, day, day, page_size)
 
 
 def _resolve_project_names(token: str, tasks: list[Task]) -> TaskFetchResult:

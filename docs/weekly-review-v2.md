@@ -250,19 +250,19 @@ Planning documentation: [#32](https://github.com/eivinbingen/life-os-automation/
 | [#30](https://github.com/eivinbingen/life-os-automation/issues/30) | Review active goals and act on direction during Weekly Review | #26, #15 schema; reuse #19 reads if available |
 | [#9](https://github.com/eivinbingen/life-os-automation/issues/9) (updated) | Look ahead chronologically within the guided Weekly Review | #26; #8 for rescheduling; #10/#15 optional Studies context |
 
-Existing #9 is repurposed for Ahead and moved out of Weekly Review v1. The old
-milestone is explicitly superseded, not reported as implemented. No duplicate
-read-only weekly dashboard is planned.
+Existing #9 is repurposed for Ahead in V2. The user approved shipping the earlier
+read-only overview as a transitional V1 through
+[PR #25](https://github.com/eivinbingen/life-os-automation/pull/25), after correctness
+fixes. This preserves useful range adapters, week models/service, tests, and a
+usable weekly view rather than discarding them because the product plan evolved.
 
-[PR #25](https://github.com/eivinbingen/life-os-automation/pull/25) is open and
-contains work for the former #9 scope, not shipped functionality. Its range
-adapters, week models/service, and tests are reuse candidates for Ahead after
-review against the V2 date and failure contracts. Its standalone `/weekly` UI and
-week-start overdue semantics do not fulfill the new workflow. Before delivering
-#9, adapt that PR or carry its useful changes into a replacement that fulfills
-#9; do not merge the old scope as-is or let its `Closes #9` imply V2 completion.
-PR #25 remains open for that implementation disposition; this documentation PR
-neither closes nor merges it.
+The temporary `/weekly` page and its “Overdue before this week” panel are explicitly
+accepted V1 behavior, not the final V2 workflow. V2 integrates that work into
+`/review/weekly`, pairs reviewed/Ahead dates, moves unresolved decisions to Clean Up,
+and adds the actions/history defined here. The V1 view groups events and task
+sections by day; a unified chronological Ahead presentation remains #9 work.
+PR #25 does not close revised issue #9 or satisfy the V2 milestone. The old V1
+milestone records the transitional delivery; V2 remains the agreed next design.
 
 #8, #10, #15, #19, and #20 retain their own
 scope/milestones; dependencies do not silently expand those issues.

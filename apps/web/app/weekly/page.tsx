@@ -1,7 +1,7 @@
 import { connection } from "next/server";
 import Link from "next/link";
 
-import type { Week } from "../actions";
+import { refreshWeek } from "../actions";
 import { WeeklyBoard } from "./weekly-board";
 import { formatDay, getLocalDay, isValidDay, startOfWeek } from "../date-utils";
 
@@ -13,7 +13,6 @@ export default async function WeeklyPage({
   searchParams,
 }: PageProps<"/weekly">) {
   await connection();
-  const apiUrl = process.env.LIFE_OS_API_URL;
   const requestedDay = (await searchParams).day;
   const dayCandidate = typeof requestedDay === "string" ? requestedDay : undefined;
   const localDay = getLocalDay();
@@ -21,20 +20,7 @@ export default async function WeeklyPage({
     isValidDay(dayCandidate) ? dayCandidate : localDay,
   );
 
-  if (!apiUrl) {
-    throw new Error("LIFE_OS_API_URL is not configured");
-  }
-
-  const response = await fetch(
-    `${apiUrl}/week?day=${encodeURIComponent(selectedWeekStart)}`,
-    { cache: "no-store" },
-  );
-
-  if (!response.ok) {
-    throw new Error("Could not load the week's data");
-  }
-
-  const week: Week = await response.json();
+  const result = await refreshWeek(selectedWeekStart);
 
   return (
     <div className="app-shell">
@@ -58,7 +44,7 @@ export default async function WeeklyPage({
           <span className="local-dot" aria-hidden="true" />
           <div>
             <strong>Local workspace</strong>
-            <span>Notion connected</span>
+            <span>{result.ok ? "Read-only weekly overview" : "Service unavailable"}</span>
           </div>
         </div>
       </aside>
@@ -66,9 +52,18 @@ export default async function WeeklyPage({
       <main className="dashboard">
         <header className="topbar">
           <span className="topbar-label">YOUR WEEK AT A GLANCE</span>
-          <time dateTime={week.start}>{formatDay(week.start)}</time>
+          <time dateTime={selectedWeekStart}>{formatDay(selectedWeekStart)}</time>
         </header>
-        <WeeklyBoard key={week.start} week={week} localDay={localDay} />
+        {result.ok ? (
+          <WeeklyBoard key={result.week.start} week={result.week} localDay={localDay} />
+        ) : (
+          <section className="service-error" role="alert" aria-labelledby="week-error-title">
+            <h1 id="week-error-title">Weekly overview is unavailable</h1>
+            <p>The local Life OS service could not load this week. Check that it is running, then try again.</p>
+            <p>Requested week starting <time dateTime={selectedWeekStart}>{formatDay(selectedWeekStart)}</time></p>
+            <a className="retry-button" href={`/weekly?day=${selectedWeekStart}`}>Try again</a>
+          </section>
+        )}
       </main>
     </div>
   );

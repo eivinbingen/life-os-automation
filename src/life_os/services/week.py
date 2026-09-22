@@ -1,5 +1,6 @@
 from collections.abc import Callable
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from googleapiclient.errors import HttpError
 from requests import RequestException
@@ -21,6 +22,18 @@ def week_end(day: date) -> date:
     return week_start(day) + timedelta(days=6)
 
 
+def _event_overlaps_day(event: CalendarEvent, day: date) -> bool:
+    zone = ZoneInfo("Europe/Zurich")
+    start = event.start
+    end = event.end
+    # Adapters emit zoned datetimes; accept local naive values in domain callers.
+    start = start.replace(tzinfo=zone) if start.tzinfo is None else start.astimezone(zone)
+    end = end.replace(tzinfo=zone) if end.tzinfo is None else end.astimezone(zone)
+    day_start = datetime.combine(day, time.min, tzinfo=zone)
+    day_end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=zone)
+    return start < day_end and end > day_start
+
+
 def build_week(
     start: date,
     end: date,
@@ -33,6 +46,8 @@ def build_week(
     Pure bucketing, no I/O. Overdue means due before the week's Monday, so a
     task due mid-week shows on its own day, not in the overdue section.
     """
+    events = list({event.id: event for event in events}.values())
+    tasks = list({task.id: task for task in tasks}.values())
     overdue_tasks = [t for t in tasks if not t.done and _is_overdue(t, start)]
 
     days = []
@@ -41,7 +56,7 @@ def build_week(
         days.append(
             WeekDay(
                 day=day,
-                events=[e for e in events if _to_date(e.start) == day],
+                events=[e for e in events if _event_overlaps_day(e, day)],
                 scheduled_tasks=[
                     t for t in tasks
                     if not t.done and _to_date(t.scheduled) == day
@@ -64,8 +79,8 @@ def build_week(
 
 def get_week(
     day: date,
-    fetch_events: Callable[[date], list[CalendarEvent]],
-    fetch_tasks: Callable[[date], TaskFetchResult],
+    fetch_events: Callable[[date, date], list[CalendarEvent]],
+    fetch_tasks: Callable[[date, date], TaskFetchResult],
 ) -> Week:
     """Aggregate one Monday-through-Sunday week around day.
 

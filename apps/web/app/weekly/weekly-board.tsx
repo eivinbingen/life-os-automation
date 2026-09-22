@@ -12,6 +12,10 @@ const timeFormatter = new Intl.DateTimeFormat("en-GB", {
   timeZone: APP_TIME_ZONE,
 });
 
+const eventDayFormatter = new Intl.DateTimeFormat("en-CA", {
+  year: "numeric", month: "2-digit", day: "2-digit", timeZone: APP_TIME_ZONE,
+});
+
 const weekdayFormatter = new Intl.DateTimeFormat("en-GB", {
   weekday: "short",
   timeZone: "UTC",
@@ -80,15 +84,17 @@ export function WeeklyBoard({ week, localDay }: { week: Week; localDay: string }
   const nextWeekStart = shiftDay(week.start, 7);
 
   const eventCount = useMemo(
-    () => week.days.reduce((sum, day) => sum + day.events.length, 0),
+    () => new Set(week.days.flatMap((day) => day.events.map((event) => event.id))).size,
     [week],
   );
   const openTaskCount = useMemo(
     () =>
-      week.days.reduce(
-        (sum, day) => sum + day.scheduled_tasks.length + day.due_tasks.length,
-        week.overdue_tasks.length,
-      ),
+      new Set([
+        ...week.overdue_tasks.map((task) => task.id),
+        ...week.days.flatMap((day) =>
+          [...day.scheduled_tasks, ...day.due_tasks].map((task) => task.id),
+        ),
+      ]).size,
     [week],
   );
   const issues = useMemo(
@@ -109,7 +115,7 @@ export function WeeklyBoard({ week, localDay }: { week: Week; localDay: string }
             <span className="title-period">.</span>
           </h1>
           <p className="intro-copy">
-            Your commitments and tasks for the coming week, day by day.
+            Your commitments and tasks for the selected week, day by day.
           </p>
         </div>
         <div className="date-navigation">
@@ -131,9 +137,9 @@ export function WeeklyBoard({ week, localDay }: { week: Week; localDay: string }
       </section>
 
       <div className="overview-strip" aria-label="Week at a glance">
-        <div className="overview-item"><strong>{eventCount}</strong><span>Calendar events</span></div>
-        <div className="overview-item"><strong>{openTaskCount}</strong><span>Open tasks</span></div>
-        <div className="overview-item"><strong>{week.overdue_tasks.length}</strong><span>Overdue</span></div>
+        <div className="overview-item"><strong>{calendarUnavailable ? "Unavailable" : eventCount}</strong><span>Calendar events</span></div>
+        <div className="overview-item"><strong>{notionUnavailable ? "Unavailable" : openTaskCount}</strong><span>Open tasks</span></div>
+        <div className="overview-item"><strong>{notionUnavailable ? "Unavailable" : week.overdue_tasks.length}</strong><span>Overdue</span></div>
       </div>
 
       {issues.length > 0 && (
@@ -149,7 +155,7 @@ export function WeeklyBoard({ week, localDay }: { week: Week; localDay: string }
 
       <section className="panel overdue-panel week-overdue-panel" aria-labelledby="week-overdue-heading">
         <div className="panel-heading">
-          <div><span className="section-kicker">NEEDS ATTENTION</span><h2 id="week-overdue-heading">Overdue</h2></div>
+          <div><span className="section-kicker">NEEDS ATTENTION</span><h2 id="week-overdue-heading">Overdue before this week</h2></div>
           <span className="count-badge overdue-count">{week.overdue_tasks.length}</span>
         </div>
         <TaskList
@@ -191,7 +197,9 @@ export function WeeklyBoard({ week, localDay }: { week: Week; localDay: string }
                           <span className="week-event-time">
                             {event.all_day
                               ? "All day"
-                              : timeFormatter.format(new Date(event.start))}
+                              : eventDayFormatter.format(new Date(event.start)) < day.day
+                                ? "Ongoing"
+                                : timeFormatter.format(new Date(event.start))}
                           </span>
                           <span className="week-event-title">{event.title}</span>
                         </li>
