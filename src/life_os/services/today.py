@@ -28,11 +28,11 @@ def _is_overdue(task: Task, day: date) -> bool:
 def build_today(
     day: date, events: list[CalendarEvent], tasks: list[Task], statuses: list[IntegrationStatus]
 ) -> Today:
-    # Overdue wins over scheduled: a passed deadline outranks today's plan.
+    # A task scheduled on the selected day stays in Scheduled even when its
+    # deadline has passed: membership in both lists is deliberate, and the
+    # overdue indicator comes from overdue-section membership.
     overdue_tasks = [t for t in tasks if not t.done and _is_overdue(t, day)]
-    scheduled_tasks = [
-        t for t in tasks if not t.done and _to_date(t.scheduled) == day and not _is_overdue(t, day)
-    ]
+    scheduled_tasks = [t for t in tasks if not t.done and _to_date(t.scheduled) == day]
     due_tasks = [t for t in tasks if not t.done and _to_date(t.due) == day]
 
     return Today(

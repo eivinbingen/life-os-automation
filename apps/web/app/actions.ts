@@ -40,6 +40,60 @@ export type CreateTaskResult =
   | { ok: true; name: string }
   | { ok: false; error: string };
 
+export type UpdateTaskResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+/** The task fields an edit panel can deliberately change. */
+export type TaskEdits = {
+  name?: string;
+  scheduled?: string | null;
+  due?: string | null;
+  done?: boolean;
+};
+
+export async function updateTask(
+  taskId: string,
+  edits: TaskEdits,
+): Promise<UpdateTaskResult> {
+  const apiUrl = process.env.LIFE_OS_API_URL;
+
+  if (!apiUrl) {
+    return { ok: false, error: "LIFE_OS_API_URL is not configured" };
+  }
+
+  // Only deliberately edited keys are sent: the backend preserves every
+  // omitted property, so untouched dates keep their Notion values.
+  const body: Record<string, unknown> = {};
+  if (edits.name !== undefined) body.name = edits.name;
+  if (edits.scheduled !== undefined) body.scheduled = edits.scheduled;
+  if (edits.due !== undefined) body.due = edits.due;
+  if (edits.done !== undefined) body.done = edits.done;
+
+  try {
+    const response = await fetch(`${apiUrl}/tasks/${encodeURIComponent(taskId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      let error = "Could not save the task";
+      try {
+        const payload = (await response.json()) as { detail?: unknown };
+        if (typeof payload.detail === "string") error = payload.detail;
+      } catch {
+        // Keep the safe fallback when the local API did not return JSON.
+      }
+      return { ok: false, error };
+    }
+
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "The Life OS service could not be reached" };
+  }
+}
+
 export async function createTask(
   name: string,
   scheduled: string | null,
@@ -110,26 +164,12 @@ export async function refreshToday(day: string): Promise<RefreshResult> {
 }
 
 export async function updateTaskDone(taskId: string, done: boolean) {
-  const apiUrl = process.env.LIFE_OS_API_URL;
+  const result = await updateTask(taskId, { done });
 
-  if (!apiUrl) {
-    throw new Error("LIFE_OS_API_URL is not configured");
+  // The completion flow keeps its throw-based contract until it moves to
+  // updateTask's result-based one.
+  if (!result.ok) {
+    throw new Error(result.error);
   }
-
-  const response = await fetch(
-    `${apiUrl}/tasks/${encodeURIComponent(taskId)}`,
-    {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ done }),
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error("Could not update task");
-  }
-
-  return response.json();
+  return { ok: true };
 }

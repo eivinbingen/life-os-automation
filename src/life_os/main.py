@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 from life_os.api import create_app
 from life_os.integrations.google_calendar import get_calendar_service, get_events_for_day
-from life_os.integrations.notion_tasks import create_task, fetch_tasks_for_day, set_task_done
+from life_os.integrations.notion_tasks import create_task, fetch_tasks_for_day, update_task
 
 
 def main():
@@ -24,10 +24,10 @@ def main():
         page_size=100,
     )
 
-    set_done = partial(set_task_done, token)
+    update = partial(update_task, token)
     create = partial(create_task, token, data_source_id)
 
-    app = create_app(fetch_events, fetch_tasks, set_done, create)
+    app = create_app(fetch_events, fetch_tasks, update, create)
     uvicorn.run(app, host="127.0.0.1", port=8000)
 
 

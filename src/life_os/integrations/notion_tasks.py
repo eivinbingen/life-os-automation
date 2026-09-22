@@ -4,7 +4,7 @@ from os import getenv
 import requests
 from dotenv import load_dotenv
 
-from life_os.models.notion import Task, TaskCreate, TaskFetchResult
+from life_os.models.notion import UNSET, Task, TaskCreate, TaskFetchResult, TaskUpdate
 
 NOTION_API_URL = "https://api.notion.com/v1"
 NOTION_VERSION = "2026-03-11"
@@ -124,8 +124,34 @@ def fetch_tasks_for_day(
 
 
 def set_task_done(token: str, task_id: str, done: bool) -> bool:
+    return update_task(token, task_id, TaskUpdate(), done=done)
 
-    body = {"properties": {"Done": {"checkbox": done}}}
+
+def update_task(token: str, task_id: str, update: TaskUpdate, done: bool | None = None) -> bool:
+    """PATCH a task page with only the deliberately edited properties.
+
+    Fields left as UNSET are omitted entirely, so Notion preserves their
+    current values — including any time component on a date. Dates are
+    written as date-only values per the capture (#7) convention.
+    """
+
+    properties: dict = {}
+    if done is not None:
+        properties["Done"] = {"checkbox": done}
+    if update.name is not UNSET:
+        properties["Name"] = {"title": [{"text": {"content": update.name or ""}}]}
+    if update.scheduled is not UNSET:
+        if update.scheduled is None:
+            properties["Scheduled"] = {"date": None}
+        else:
+            properties["Scheduled"] = {"date": {"start": update.scheduled.isoformat()}}
+    if update.due is not UNSET:
+        if update.due is None:
+            properties["Due"] = {"date": None}
+        else:
+            properties["Due"] = {"date": {"start": update.due.isoformat()}}
+
+    body = {"properties": properties}
 
     res = requests.patch(
         url=f"{NOTION_API_URL}/pages/{task_id}",
