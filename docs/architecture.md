@@ -65,7 +65,9 @@ The first endpoints may include:
 - `GET /tasks`
 - `GET /health`
 
-The API started read-only. It now includes one selected write action (`PATCH /tasks/{task_id}`, setting a task's `Done` checkbox in Notion); everything else remains read-only until a vertical slice explicitly adds more writes.
+The API started read-only. It now supports task completion (`PATCH /tasks/{task_id}`,
+setting `Done`) and task capture (`POST /tasks`, with name and optional Scheduled/Due).
+Further writes remain bounded by individual vertical slices; basic editing is #8.
 
 ### Frontend
 
@@ -116,6 +118,26 @@ PostgreSQL should only be introduced when the application needs capabilities suc
 - Cached integration data.
 - Reliable synchronization state.
 - Native entities that no longer belong in Notion.
+
+## Planned Weekly Review V2 persistence and services
+
+[Weekly Review V2](weekly-review-v2.md) adds a guided domain workflow with draft
+and completed review history. Keep date ranges, queue membership, deduplication,
+and completion semantics in domain services; share existing task actions with Today.
+Normalize new source fields in adapters after schema inspection, not in the UI.
+
+The planned WeeklyReview repository stores only app-owned review text/progress and
+minimal saved summary context. Use an ignored local JSON store with atomic replacement,
+versioning, conflict handling, and documented backup/restore. No PostgreSQL is added
+in this milestone. External task/goal/project/calendar records stay authoritative
+in their existing services; this is neither synchronization nor a duplicate task store.
+Completed review snapshots remain fixed when external records later change.
+
+Source outages must not appear as empty queues or zero activity. Current task data
+does not expose completion time; weekly activity claims require verified evidence
+or explicit unavailable/proxy labels. Schema-dependent write mappings are gated on
+#15 discovery, and shared date editing on #8. History storage is new planned behavior,
+not an already implemented API capability.
 
 ## MCP Strategy
 

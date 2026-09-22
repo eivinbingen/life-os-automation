@@ -39,21 +39,32 @@ discovery concludes.
 
 ## Following milestones (order not yet decided)
 
-- Weekly Review: a read-only overview of the coming week's commitments and
-  important tasks (#9).
+- Weekly Review V2: guided recalibration and saved review history, as specified
+  in the [product design](weekly-review-v2.md) and
+  [milestone](https://github.com/eivinbingen/life-os-automation/milestone/6).
+  Start/resume/complete and history (#26), Look Back (#27), unresolved work (#28),
+  metadata hygiene (#29), Review Direction (#30), and Look Ahead (reused #9).
+  Documentation is tracked in #32. The unimplemented Weekly Review v1 milestone
+  is superseded; it is not a separate delivery prerequisite.
 - Studies: active courses and upcoming academic work (#10).
 - Finance: the monthly forecast-versus-actual review in the web app (#11).
 
-These are the next agreed milestones after Today v2. Their delivery order
-will be decided when Today v2 is complete.
+These are the next agreed milestones after Today v2. Their relative delivery order
+remains undecided. Weekly Review V2 planning precedes parallel implementation;
+start with #26 and settle shared date/history contracts and #8/#15-dependent
+write mappings before assigning independent implementation slices.
 
 ## Later direction
+
+- Weekly Review V3/later discovery (#31): health rules, suggestions, inferred
+  importance, weekly priorities and Today integration, analytics, and habits.
+  These are explicitly excluded from V2 and have no delivery commitment.
 
 - Broader task editing, kept separate from read-only context as described in
   #15.
 - MCP over the same domain services.
-- PostgreSQL, once the application needs history, preferences, cached data,
-  or native entities.
+- PostgreSQL only when broader persistence needs justify it. Weekly Review V2
+  history uses a narrow local store and does not authorize PostgreSQL.
 - Hosting, once remote access justifies authentication and operational
   complexity.
 
