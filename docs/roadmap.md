@@ -45,7 +45,10 @@ discovery concludes.
   Start/resume/complete and history (#26), Look Back (#27), unresolved work (#28),
   metadata hygiene (#29), Review Direction (#30), and Look Ahead (reused #9).
   Documentation is tracked in #32. The unimplemented Weekly Review v1 milestone
-  is superseded; it is not a separate delivery prerequisite.
+  is superseded; it is not a separate delivery prerequisite. Open
+  [PR #25](https://github.com/eivinbingen/life-os-automation/pull/25) contains the
+  earlier overview implementation; adapt/reuse it for #9, not a separate `/weekly`
+  product. It must not close the revised #9 until V2 acceptance criteria are met.
 - Studies: active courses and upcoming academic work (#10).
 - Finance: the monthly forecast-versus-actual review in the web app (#11).
 

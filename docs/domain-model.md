@@ -48,7 +48,8 @@ Notion is initially the source of truth for Areas, Goals, Projects, Tasks, and C
 A WeeklyReview is an app-owned record of guided recalibration, separate from the
 Notion task/project/goal hierarchy. It contains a stable ID, reviewed-week and
 following-week dates, timezone, draft/completed state, timestamps, section progress,
-manual Wins, and optional reflection. It may retain a compact objective summary
+manual Wins, and optional reflection. Each record has a persisted integer revision
+for expected-version save checks; the store schema version is separate metadata. It may retain a compact objective summary
 with metric definitions, capture time, and source-completeness status.
 
 One record per reviewed week supports resume and idempotent completion. Completed

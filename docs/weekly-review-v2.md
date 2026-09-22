@@ -141,6 +141,7 @@ App-owned history is a V2 requirement. Introduce a small versioned WeeklyReview
 model behind a repository boundary with:
 
 - Stable ID and reviewed-week identity, paired Ahead dates, and timezone.
+- Persisted integer revision per record, separate from the store schema version.
 - Draft/completed state, created/updated/completed timestamps, and section progress.
 - Manual Wins and optional reflection.
 - Optional compact saved context from Look Back, with capture time, definitions,
@@ -155,16 +156,62 @@ future scope.
 
 Implementation choice for this milestone: an ignored local JSON store, atomic
 replacement, and explicit conflict/error handling behind a domain repository
-interface. Document the storage path and backup/restore steps. This stores only
+interface, with the concrete contract below. This stores only
 app-owned reviews, not competing editable copies of Notion entities. No PostgreSQL,
 cloud hosting, authentication, new Notion database, or general sync framework is
 needed. Failed/stale writes must not lose earlier saved records or claim success.
 
+### Save conflicts and recovery contract
+
+The store has a `schema_version`; each review has a monotonically increasing
+`revision`. Every draft save and first completion supplies the revision last read.
+The repository holds a stable store-wide interprocess lock while rereading the
+latest file, checking the expected revision and lifecycle, applying the change,
+and atomically replacing the file. Lock a separate stable lock file, not the JSON
+inode being replaced. This protects both edits to the same review and saves to
+different weeks; atomic replacement alone does not prevent lost updates.
+
+A stale save returns a conflict (HTTP 409 at the API boundary) without changing
+stored data. The UI retains unsaved text, explains that another save occurred,
+and lets the user load the current version and reconcile before explicitly saving
+again. Never automatically overwrite or blindly retry with the newer revision.
+Successful mutations increment the revision. Completed records reject later edits.
+Completion carries a stable operation ID: retrying that same completed operation
+returns the existing result without another mutation, even if its original response
+was lost; a different stale completion remains a conflict.
+
+Planned storage location: `<repository-root>/var/life-os/weekly-reviews.json`,
+resolved from the repository root rather than the launch working directory. The
+existing `var/` ignore rule covers the store, same-directory temporary files, and
+`weekly-reviews.lock`. Each checkout has its own store; do not automatically copy
+personal history into worktrees. No history file is created by this documentation PR.
+
+Manual backup/restore procedure for #26:
+
+1. Stop all Life OS processes using this checkout. Copy the JSON file to a
+   user-chosen private backup location; do not commit it. Record the backup date.
+2. To restore, keep the service stopped and preserve any existing file separately
+   before replacing it with the backup at the exact path above.
+3. Before accepting writes, validate JSON syntax, supported schema version, unique
+   week/record IDs, revisions, and lifecycle fields. Invalid/corrupt or unsupported
+   data must produce an actionable error and remain untouched, never silently reset
+   to an empty history. A missing file is the only normal first-run empty-store case.
+4. Restart Life OS, reload open review pages, and verify the expected draft/history
+   records. Restore intentionally rolls history back to the selected backup; old
+   browser edits must be reconciled rather than automatically resubmitted.
+
+#26 must verify two writers using the same revision (only one succeeds), writes to
+different weeks without record loss, duplicate completion after a lost response,
+corrupt/unsupported stores, and backup/restore with synthetic records.
+
 ## Existing architecture and dependencies
 
-Repository inspected during planning: `src/life_os/models/notion.py`,
-`integrations/notion_tasks.py`, `integrations/google_calendar.py`,
-`services/today.py`, and `api.py`. The current implementation supports task capture
+Repository inspected during planning:
+[`src/life_os/models/notion.py`](../src/life_os/models/notion.py),
+[`src/life_os/integrations/notion_tasks.py`](../src/life_os/integrations/notion_tasks.py),
+[`src/life_os/integrations/google_calendar.py`](../src/life_os/integrations/google_calendar.py),
+[`src/life_os/services/today.py`](../src/life_os/services/today.py), and
+[`src/life_os/api.py`](../src/life_os/api.py). The current implementation supports task capture
 and Done writes; name/date editing remains in #8. There are no goal/course adapters
 or WeeklyReview persistence yet. Do not mistake documented hierarchy for verified
 Notion schema or implemented behavior.
@@ -205,7 +252,19 @@ Planning documentation: [#32](https://github.com/eivinbingen/life-os-automation/
 
 Existing #9 is repurposed for Ahead and moved out of Weekly Review v1. The old
 milestone is explicitly superseded, not reported as implemented. No duplicate
-read-only weekly dashboard is planned. #8, #10, #15, #19, and #20 retain their own
+read-only weekly dashboard is planned.
+
+[PR #25](https://github.com/eivinbingen/life-os-automation/pull/25) is open and
+contains work for the former #9 scope, not shipped functionality. Its range
+adapters, week models/service, and tests are reuse candidates for Ahead after
+review against the V2 date and failure contracts. Its standalone `/weekly` UI and
+week-start overdue semantics do not fulfill the new workflow. Before delivering
+#9, adapt that PR or carry its useful changes into a replacement that fulfills
+#9; do not merge the old scope as-is or let its `Closes #9` imply V2 completion.
+PR #25 remains open for that implementation disposition; this documentation PR
+neither closes nor merges it.
+
+#8, #10, #15, #19, and #20 retain their own
 scope/milestones; dependencies do not silently expand those issues.
 
 Before parallel implementation, land the shared workflow/date/history contract,

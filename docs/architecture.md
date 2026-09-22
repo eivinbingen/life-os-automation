@@ -128,7 +128,11 @@ Normalize new source fields in adapters after schema inspection, not in the UI.
 
 The planned WeeklyReview repository stores only app-owned review text/progress and
 minimal saved summary context. Use an ignored local JSON store with atomic replacement,
-versioning, conflict handling, and documented backup/restore. No PostgreSQL is added
+a store schema version and per-review revision checks under a stable interprocess
+lock. Store data at `<repository-root>/var/life-os/weekly-reviews.json` (already
+covered by `var/` in `.gitignore`). The design specifies conflict recovery and
+manual backup/restore, including refusing writes to corrupt/unsupported stores.
+No PostgreSQL is added
 in this milestone. External task/goal/project/calendar records stay authoritative
 in their existing services; this is neither synchronization nor a duplicate task store.
 Completed review snapshots remain fixed when external records later change.
