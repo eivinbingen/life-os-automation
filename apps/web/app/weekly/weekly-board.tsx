@@ -159,79 +159,81 @@ export function WeeklyBoard({ week, localDay }: { week: Week; localDay: string }
         />
       </section>
 
-      <div className="week-grid" role="list" aria-label="Week days">
-        {week.days.map((day) => {
-          const isToday = day.day === localDay;
-          return (
-            <section
-              className={`panel week-day-panel${isToday ? " week-day-today" : ""}`}
-              key={day.day}
-              role="listitem"
-              aria-labelledby={`day-heading-${day.day}`}
-            >
-              <div className="panel-heading week-day-heading">
-                <div>
-                  <span className="section-kicker">
+      <section className="panel" aria-labelledby="week-days-heading">
+        <div className="panel-heading">
+          <div><span className="section-kicker">DAY BY DAY</span><h2 id="week-days-heading">Your week</h2></div>
+          <span className="count-badge">{eventCount} {eventCount === 1 ? "event" : "events"}</span>
+        </div>
+        <div className="week-table" role="list" aria-label="Week days">
+          {week.days.map((day) => {
+            const isToday = day.day === localDay;
+            const headingId = `day-heading-${day.day}`;
+            return (
+              <div
+                className={`week-row${isToday ? " week-row-today" : ""}`}
+                key={day.day}
+                role="listitem"
+                aria-labelledby={headingId}
+              >
+                <div className="week-row-date">
+                  <strong id={headingId}>
                     {weekdayFormatter.format(new Date(`${day.day}T12:00:00Z`))}
-                    {isToday ? " · TODAY" : ""}
-                  </span>
-                  <h2 id={`day-heading-${day.day}`}>
-                    {monthDayFormatter.format(new Date(`${day.day}T12:00:00Z`))}
-                  </h2>
+                  </strong>
+                  <span>{monthDayFormatter.format(new Date(`${day.day}T12:00:00Z`))}</span>
+                  {isToday && <span className="week-row-today-mark">Today</span>}
                 </div>
-                <span className="count-badge">{day.events.length}</span>
-              </div>
 
-              <div className="week-day-body">
-                {day.events.length > 0 ? (
-                  <ol className="week-event-list">
-                    {day.events.map((event) => (
-                      <li className="week-event" key={event.id}>
-                        <span className="week-event-time">
-                          {event.all_day ? "ALL DAY" : timeFormatter.format(new Date(event.start))}
-                        </span>
-                        <span className="week-event-title">{event.title}</span>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <p className="week-day-empty">
-                    {calendarUnavailable ? "Events unavailable." : "No events."}
-                  </p>
-                )}
-
-                {day.scheduled_tasks.length > 0 && (
-                  <div className="week-day-tasks">
-                    <span className="week-day-label">Scheduled</span>
-                    <TaskList
-                      tasks={day.scheduled_tasks}
-                      dateField="scheduled"
-                      emptyMessage=""
-                    />
-                  </div>
-                )}
-
-                {day.due_tasks.length > 0 && (
-                  <div className="week-day-tasks">
-                    <span className="week-day-label">Due</span>
-                    <TaskList tasks={day.due_tasks} dateField="due" emptyMessage="" />
-                  </div>
-                )}
-
-                {day.events.length === 0 &&
-                  day.scheduled_tasks.length === 0 &&
-                  day.due_tasks.length === 0 && (
-                    <p className="week-day-empty">
-                      {notionUnavailable || calendarUnavailable
-                        ? "Some information may be missing."
-                        : "Nothing planned."}
+                <div className="week-row-events">
+                  {day.events.length > 0 ? (
+                    <ol className="week-event-list">
+                      {day.events.map((event) => (
+                        <li className="week-event" key={event.id}>
+                          <span className="week-event-time">
+                            {event.all_day
+                              ? "All day"
+                              : timeFormatter.format(new Date(event.start))}
+                          </span>
+                          <span className="week-event-title">{event.title}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="week-row-none">
+                      {calendarUnavailable ? "Events unavailable." : "No events."}
                     </p>
                   )}
+                </div>
+
+                <div className="week-row-tasks">
+                  {day.scheduled_tasks.length > 0 && (
+                    <div className="week-day-tasks">
+                      <span className="week-day-label">Scheduled</span>
+                      <TaskList
+                        tasks={day.scheduled_tasks}
+                        dateField="scheduled"
+                        emptyMessage=""
+                      />
+                    </div>
+                  )}
+
+                  {day.due_tasks.length > 0 && (
+                    <div className="week-day-tasks">
+                      <span className="week-day-label">Due</span>
+                      <TaskList tasks={day.due_tasks} dateField="due" emptyMessage="" />
+                    </div>
+                  )}
+
+                  {day.scheduled_tasks.length === 0 && day.due_tasks.length === 0 && (
+                    <p className="week-row-none">
+                      {notionUnavailable ? "Tasks unavailable." : "No tasks."}
+                    </p>
+                  )}
+                </div>
               </div>
-            </section>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      </section>
 
       <footer className="dashboard-footer">
         <span>Life OS <span className="footer-separator">/</span> Weekly Review</span>

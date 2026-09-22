@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import Link from "next/link";
 
 import type { Today } from "./actions";
 import { Dashboard } from "./dashboard";
@@ -40,6 +41,10 @@ export default async function Home({ searchParams }: PageProps<"/">) {
             <span className="nav-icon" aria-hidden="true">◈</span>
             Today
           </div>
+          <Link className="nav-link" href="/weekly">
+            <span className="nav-icon" aria-hidden="true">▦</span>
+            Weekly Review
+          </Link>
         </div>
         <div className="sidebar-footer">
           <span className="local-dot" aria-hidden="true" />
