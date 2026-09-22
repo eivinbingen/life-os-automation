@@ -319,8 +319,8 @@ describe("Task editing", () => {
   }
 
   function editorInput(label: "Name" | "Scheduled" | "Due") {
-    // The dialog's fields share labels with dashboard copy; scope queries to
-    // the dialog to avoid collisions.
+    // The dialog's fields share labels with dashboard copy; scope the query
+    // to the dialog to avoid collisions.
     const dialog = screen.getByRole("dialog");
     return within(dialog).getByLabelText(label) as HTMLInputElement;
   }
@@ -512,6 +512,39 @@ describe("Task editing", () => {
     // Let the post-save state settle before the next test unmounts.
     await waitFor(() => {
       expect(refreshToday).toHaveBeenCalled();
+    });
+  });
+
+  it("blocks editing while a refresh or another task save is in flight", async () => {
+    const user = userEvent.setup();
+    let resolveRefresh: (result: RefreshResult) => void = () => {};
+    refreshToday.mockImplementation(
+      () =>
+        new Promise<RefreshResult>((resolve) => {
+          resolveRefresh = resolve;
+        }),
+    );
+    renderDashboard(makeToday());
+
+    // Trigger a pending refresh (simulates any write/refresh in flight).
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+
+    await openEditor(user, "Write report");
+    // While blocked, the fields and Save are disabled — the disabled name
+    // input also proves the editor cannot accept edits during the refresh.
+    expect((editorInput("Name") as HTMLInputElement).disabled).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "Save" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(updateTask).not.toHaveBeenCalled();
+
+    resolveRefresh({ ok: true, today: makeToday() });
+    await waitFor(() => {
+      expect(
+        (screen.getByRole("button", { name: "Save" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
     });
   });
 });

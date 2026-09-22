@@ -31,11 +31,15 @@ export function TaskEditPanel({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { refresh, setSavedNotice } = useDashboardOperations();
+  const { refresh, isRefreshing, capturePending, setSavedNotice } =
+    useDashboardOperations();
   const { pendingIds } = useTaskCompletion();
-  // A pending checkbox save on this task must not race the edit save.
+  // A pending checkbox save on this task must not race the edit save, and a
+  // refresh or capture write in flight would make the post-save refresh a
+  // no-op, letting its stale response overwrite the dashboard with pre-edit
+  // data. Match capture's blocked state.
   const completionPending = pendingIds.has(task.id);
-  const blocked = pending || completionPending;
+  const blocked = pending || isRefreshing || capturePending || completionPending;
   const nameBlank = name.trim().length === 0;
   const saveDisabled = blocked || nameBlank;
 

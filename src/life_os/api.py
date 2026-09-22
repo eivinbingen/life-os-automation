@@ -2,7 +2,7 @@ from collections.abc import Callable
 from datetime import date
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from requests import HTTPError, RequestException
 
 from life_os.models.calendar import CalendarEvent
@@ -21,7 +21,9 @@ from life_os.services.today import get_today
 class TaskUpdate(BaseModel):
     """What an edit request means to change; Notion remains authoritative.
 
-    Omitted keys preserve the Notion value; an explicit null clears it.
+    Omitted keys preserve the Notion value; an explicit null clears the
+    date. Name and Done cannot be null: there is no clear semantics for
+    them, so an explicit null is rejected rather than silently dropped.
     """
 
     done: bool | None = None
@@ -35,6 +37,14 @@ class TaskUpdate(BaseModel):
         if value is not None and not value.strip():
             raise ValueError("Task name must not be blank")
         return value.strip() if value is not None else None
+
+    @model_validator(mode="after")
+    def reject_clearing_nonclearable_fields(self) -> "TaskUpdate":
+        if "name" in self.model_fields_set and self.name is None:
+            raise ValueError("Task name cannot be cleared")
+        if "done" in self.model_fields_set and self.done is None:
+            raise ValueError("Done cannot be cleared; omit it or send true/false")
+        return self
 
     def to_domain(self) -> DomainTaskUpdate:
         return DomainTaskUpdate(

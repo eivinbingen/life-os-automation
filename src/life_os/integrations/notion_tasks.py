@@ -139,7 +139,9 @@ def update_task(token: str, task_id: str, update: TaskUpdate, done: bool | None 
     if done is not None:
         properties["Done"] = {"checkbox": done}
     if update.name is not UNSET:
-        properties["Name"] = {"title": [{"text": {"content": update.name or ""}}]}
+        # A set name is never None: the API layer rejects null names, and a
+        # blank name cannot reach the adapter.
+        properties["Name"] = {"title": [{"text": {"content": update.name}}]}
     if update.scheduled is not UNSET:
         if update.scheduled is None:
             properties["Scheduled"] = {"date": None}

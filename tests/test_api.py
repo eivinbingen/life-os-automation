@@ -211,6 +211,65 @@ def test_update_task_rejects_blank_name():
     assert response.status_code == 422
 
 
+def test_update_task_rejects_null_name():
+    """An explicit null name is rejected, not written as an empty title."""
+
+    def fetch_events(day):
+        return []
+
+    def fetch_tasks(day):
+        return []
+
+    def update(task_id, update, done):
+        return True
+
+    client = TestClient(create_app(fetch_events, fetch_tasks, update))
+
+    response = client.patch("/tasks/task-1", json={"name": None})
+
+    assert response.status_code == 422
+
+
+def test_update_task_rejects_null_done():
+    """An explicit null done is rejected instead of silently dropped."""
+
+    def fetch_events(day):
+        return []
+
+    def fetch_tasks(day):
+        return []
+
+    def update(task_id, update, done):
+        return True
+
+    client = TestClient(create_app(fetch_events, fetch_tasks, update))
+
+    response = client.patch("/tasks/task-1", json={"done": None})
+
+    assert response.status_code == 422
+
+
+def test_update_task_rejects_mixed_payload_with_null_done():
+    """A mixed payload carrying done:null must not drop the done edit."""
+
+    def fetch_events(day):
+        return []
+
+    def fetch_tasks(day):
+        return []
+
+    def update(task_id, update, done):
+        return True
+
+    client = TestClient(create_app(fetch_events, fetch_tasks, update))
+
+    response = client.patch(
+        "/tasks/task-1", json={"done": None, "scheduled": "2026-09-25"}
+    )
+
+    assert response.status_code == 422
+
+
 def test_update_task_rejects_empty_payload():
     def fetch_events(day):
         return []
