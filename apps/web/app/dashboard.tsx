@@ -248,6 +248,12 @@ export function Dashboard({
   // Mirrors loadingDay so load completions clear it even when the selection
   // has moved on in the meantime.
   const loadingDayRef = useRef<string | null>(null);
+  // Per-day request generation: incremented whenever a new request starts
+  // for a day (navigation load or explicit Refresh). Only the response of
+  // the latest generation for a day may commit, so a slower navigation
+  // response can never overwrite a newer explicit Refresh result, and a
+  // Refresh landing after a newer navigation load cannot either.
+  const dayRequestEpochRef = useRef<Map<string, number>>(new Map());
 
   const previousDay = shiftDay(selectedDay, -1);
   const nextDay = shiftDay(selectedDay, 1);
@@ -297,6 +303,11 @@ export function Dashboard({
     const existing = dayLoadsRef.current.get(day);
     if (existing) return existing;
 
+    // Start a new generation for this day; any response from an older
+    // generation (including an explicit Refresh's) is now obsolete.
+    const epoch = (dayRequestEpochRef.current.get(day) ?? 0) + 1;
+    dayRequestEpochRef.current.set(day, epoch);
+
     const load = (async () => {
       let result: RefreshResult;
       try {
@@ -305,6 +316,14 @@ export function Dashboard({
         // Defense in depth: the server action reports failures as results,
         // but anything thrown must not leave a dangling in-flight entry.
         result = { ok: false as const, error: "Refresh failed unexpectedly" };
+      }
+
+      if (dayRequestEpochRef.current.get(day) !== epoch) {
+        // Superseded: a newer request for this day (navigation load or
+        // explicit Refresh) started after this one; only the latest may
+        // commit.
+        dayLoadsRef.current.delete(day);
+        return result;
       }
 
       if (result.ok) {
@@ -346,6 +365,11 @@ export function Dashboard({
     // Read the day at request time: the explicit Refresh always targets the
     // currently selected day, never a stale closure.
     const day = selectedDayRef.current;
+    // The explicit Refresh bypasses the cache and starts a new generation
+    // for the day, superseding any navigation load in flight for it.
+    const epoch = (dayRequestEpochRef.current.get(day) ?? 0) + 1;
+    dayRequestEpochRef.current.set(day, epoch);
+
     let result: RefreshResult;
     try {
       result = await refreshToday(day);
@@ -355,20 +379,24 @@ export function Dashboard({
       result = { ok: false as const, error: "Refresh failed unexpectedly" };
     }
 
-    if (result.ok) {
-      // Refresh bypasses the cache: the new result replaces the cached copy.
-      dayCacheRef.current.set(day, {
-        today: result.today,
-        loadedAt: new Date().toISOString(),
-      });
-      if (selectedDayRef.current === day) {
-        setToday(result.today);
-        setCompletionEpoch((epoch) => epoch + 1);
-        setLastRefreshedAt(new Date().toISOString());
-        setRefreshError(null);
+    const superseded = dayRequestEpochRef.current.get(day) !== epoch;
+
+    if (!superseded) {
+      if (result.ok) {
+        // Refresh bypasses the cache: the new result replaces the cached copy.
+        dayCacheRef.current.set(day, {
+          today: result.today,
+          loadedAt: new Date().toISOString(),
+        });
+        if (selectedDayRef.current === day) {
+          setToday(result.today);
+          setCompletionEpoch((epoch) => epoch + 1);
+          setLastRefreshedAt(new Date().toISOString());
+          setRefreshError(null);
+        }
+      } else if (selectedDayRef.current === day) {
+        setRefreshError(result.error);
       }
-    } else if (selectedDayRef.current === day) {
-      setRefreshError(result.error);
     }
 
     refreshInFlight.current = false;

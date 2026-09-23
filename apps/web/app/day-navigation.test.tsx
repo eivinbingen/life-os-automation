@@ -386,4 +386,71 @@ describe("Day navigation", () => {
     await new Promise((resolve) => setTimeout(resolve, 400));
     expect(screen.getByRole("heading", { name: "Today." })).toBeTruthy();
   });
+
+  it("refresh supersedes a concurrent navigation load for the same day", async () => {
+    const user = userEvent.setup();
+    const deferred: Array<{
+      day: string;
+      resolve: (result: RefreshResult) => void;
+    }> = [];
+    refreshToday.mockImplementation(
+      (day: string) =>
+        new Promise<RefreshResult>((resolve) => {
+          deferred.push({ day, resolve });
+        }),
+    );
+    renderDashboard();
+
+    // Start a navigation load for yesterday, then hit Refresh before it
+    // resolves. Both requests are now in flight for the same day.
+    await user.click(screen.getByRole("button", { name: /Previous day/ }));
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(refreshToday).toHaveBeenCalledTimes(2);
+
+    // The navigation response resolves first with stale data...
+    deferred
+      .filter((entry) => entry.day === "2026-09-19")[0]
+      ?.resolve({
+        ok: true,
+        today: makeToday({
+          day: "2026-09-19",
+          scheduled_tasks: [
+            {
+              id: "task-stale",
+              name: "Stale navigation data",
+              done: false,
+              scheduled: "2026-09-19",
+              due: null,
+              project_name: null,
+            },
+          ],
+        }),
+      });
+    // ...and the Refresh response resolves after with fresh data.
+    deferred
+      .filter((entry) => entry.day === "2026-09-19")[1]
+      ?.resolve({
+        ok: true,
+        today: makeToday({
+          day: "2026-09-19",
+          scheduled_tasks: [
+            {
+              id: "task-fresh",
+              name: "Freshly refreshed data",
+              done: false,
+              scheduled: "2026-09-19",
+              due: null,
+              project_name: null,
+            },
+          ],
+        }),
+      });
+
+    await waitFor(() => {
+      expect(screen.getByText("Freshly refreshed data")).toBeTruthy();
+    });
+    // The earlier navigation response must not overwrite the newer
+    // explicit Refresh result.
+    expect(screen.queryByText("Stale navigation data")).toBeNull();
+  });
 });
