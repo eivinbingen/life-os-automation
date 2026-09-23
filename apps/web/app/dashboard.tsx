@@ -4,13 +4,13 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import Link from "next/link";
 
-import type { Task, Today } from "./actions";
+import type { RefreshResult, Task, Today } from "./actions";
 import { refreshToday } from "./actions";
 import {
   APP_TIME_ZONE,
@@ -27,8 +27,12 @@ import {
   useTaskCompletion,
 } from "./task-completion";
 
+/** How long a cached day counts as fresh: no refetch when returning to it. */
+const CACHE_TTL_MS = 30_000;
+
 type DashboardOperations = {
   refresh: () => Promise<void>;
+  selectDay: (day: string) => void;
   isRefreshing: boolean;
   capturePending: boolean;
   setCapturePending: (pending: boolean) => void;
@@ -218,12 +222,47 @@ export function Dashboard({
   // Guards against duplicate refresh requests even if two clicks land in the
   // same render frame, before isRefreshing state updates.
   const refreshInFlight = useRef(false);
+  // The selected day switches immediately on navigation, independent of the
+  // data currently displayed, so the heading is never behind the click.
+  const [selectedDay, setSelectedDay] = useState(initialToday.day);
+  // The day with a navigation load in flight for the current selection.
+  // Distinct from isRefreshing, which is the explicit Refresh action and
+  // blocks edits; navigation loading never blocks editing.
+  const [loadingDay, setLoadingDay] = useState<string | null>(null);
 
-  const selectedDay = today.day;
+  // Client-side cache of recently loaded days. Deliberately ref-based: the
+  // cache lives only as long as this dashboard component, matching the
+  // issue's short-lived scope, and writes inside async loads do not render.
+  const dayCacheRef = useRef<Map<string, { today: Today; loadedAt: string }>>(
+    new Map([
+      [initialToday.day, { today: initialToday, loadedAt: initialRefreshedAt }],
+    ]),
+  );
+  // One in-flight load per day: navigating to an already-loading day reuses
+  // its request instead of issuing a second one.
+  const dayLoadsRef = useRef<Map<string, Promise<RefreshResult>>>(new Map());
+  // Mirrors selectedDay for async load callbacks: they must adopt results
+  // only for the day still selected (latest selection wins), not the day
+  // captured when the request started.
+  const selectedDayRef = useRef(selectedDay);
+  // Mirrors loadingDay so load completions clear it even when the selection
+  // has moved on in the meantime.
+  const loadingDayRef = useRef<string | null>(null);
+
   const previousDay = shiftDay(selectedDay, -1);
   const nextDay = shiftDay(selectedDay, 1);
   const heading = dayHeading(selectedDay, localDay);
   const isCurrentDay = selectedDay === localDay;
+
+  // True while a navigation load for the selected day is in flight.
+  const dayLoading = loadingDay === selectedDay;
+  // True when the displayed data belongs to a different day than selected:
+  // the panels are showing the previous day's data as a loading fallback.
+  const showingOtherDay = today.day !== selectedDay;
+  // A navigation load failed and no cached data exists for the selected day,
+  // so the fallback data must be clearly identified, never under this date.
+  const selectedDayUnavailable =
+    refreshError !== null && showingOtherDay && !dayLoading;
 
   const tasks = useMemo(
     () => [
@@ -251,14 +290,65 @@ export function Dashboard({
   const calendarUnavailable = issues.some((status) => status.name === "Calendar");
   const notionUnavailable = issues.some((status) => status.name === "Notion");
 
+  // Fetches a day and adopts its result only if it is still selected when the
+  // response lands. Shared by first-time navigation, stale-cache returns, and
+  // failed-load retries, so every path goes through the same cache rules.
+  const loadDay = useCallback(async (day: string) => {
+    const existing = dayLoadsRef.current.get(day);
+    if (existing) return existing;
+
+    const load = (async () => {
+      let result: RefreshResult;
+      try {
+        result = await refreshToday(day);
+      } catch {
+        // Defense in depth: the server action reports failures as results,
+        // but anything thrown must not leave a dangling in-flight entry.
+        result = { ok: false as const, error: "Refresh failed unexpectedly" };
+      }
+
+      if (result.ok) {
+        dayCacheRef.current.set(day, {
+          today: result.today,
+          loadedAt: new Date().toISOString(),
+        });
+        if (selectedDayRef.current === day) {
+          setToday(result.today);
+          setCompletionEpoch((epoch) => epoch + 1);
+          setLastRefreshedAt(new Date().toISOString());
+          setRefreshError(null);
+        }
+      } else if (selectedDayRef.current === day) {
+        setRefreshError(result.error);
+      }
+
+      if (loadingDayRef.current === day) {
+        loadingDayRef.current = null;
+        setLoadingDay(null);
+      }
+      dayLoadsRef.current.delete(day);
+      return result;
+    })();
+
+    dayLoadsRef.current.set(day, load);
+    if (selectedDayRef.current === day) {
+      loadingDayRef.current = day;
+      setLoadingDay(day);
+    }
+    return load;
+  }, []);
+
   const refresh = useCallback(async () => {
     if (refreshInFlight.current) return;
     refreshInFlight.current = true;
     setIsRefreshing(true);
 
-    let result;
+    // Read the day at request time: the explicit Refresh always targets the
+    // currently selected day, never a stale closure.
+    const day = selectedDayRef.current;
+    let result: RefreshResult;
     try {
-      result = await refreshToday(selectedDay);
+      result = await refreshToday(day);
     } catch {
       // Defense in depth: the server action reports failures as results,
       // but anything thrown here must still end the pending state.
@@ -266,22 +356,94 @@ export function Dashboard({
     }
 
     if (result.ok) {
-      setToday(result.today);
-      setCompletionEpoch((epoch) => epoch + 1);
-      setLastRefreshedAt(new Date().toISOString());
-      setRefreshError(null);
-    } else {
+      // Refresh bypasses the cache: the new result replaces the cached copy.
+      dayCacheRef.current.set(day, {
+        today: result.today,
+        loadedAt: new Date().toISOString(),
+      });
+      if (selectedDayRef.current === day) {
+        setToday(result.today);
+        setCompletionEpoch((epoch) => epoch + 1);
+        setLastRefreshedAt(new Date().toISOString());
+        setRefreshError(null);
+      }
+    } else if (selectedDayRef.current === day) {
       setRefreshError(result.error);
     }
 
     refreshInFlight.current = false;
     setIsRefreshing(false);
-  }, [selectedDay]);
+  }, []);
+
+  // Adopts a day through the shared cache rules. Used by both the day
+  // controls (which push a history entry first) and browser back/forward.
+  const adoptDay = useCallback(
+    (day: string) => {
+      setSelectedDay(day);
+      selectedDayRef.current = day;
+      // Open panels close on a day switch so a capture or edit can never
+      // target the wrong day; in-flight saves continue in the background.
+      setEditingTask(null);
+      setSavedNotice(null);
+
+      const cache = dayCacheRef.current.get(day);
+      if (cache) {
+        // Cached: show immediately, labeled with its original load time so
+        // stale data is never presented as freshly loaded. The completion
+        // state is kept: re-seeding it from the cached snapshot would
+        // uncheck tasks completed after the day was cached.
+        setToday(cache.today);
+        setLastRefreshedAt(cache.loadedAt);
+        setRefreshError(null);
+        if (Date.now() - new Date(cache.loadedAt).getTime() >= CACHE_TTL_MS) {
+          // Stale beyond the window: a fresh fetch runs in the background
+          // and swaps in when it lands.
+          void loadDay(day);
+        }
+        return;
+      }
+
+      // Uncached: the previous day's data stays visible as a fallback under
+      // a clear loading indicator for the newly selected day; a failure
+      // swaps it for the failed-day state instead of mislabeling it.
+      setRefreshError(null);
+      void loadDay(day);
+    },
+    [loadDay],
+  );
+
+  const selectDay = useCallback(
+    (day: string) => {
+      if (day === selectedDayRef.current) return;
+
+      // Native pushState integrates with the Next router: the URL reflects
+      // the day without a server round trip or a remount (Next 16 docs,
+      // linking-and-navigating#native-history-api).
+      window.history.pushState({ day }, "", `/?day=${day}`);
+      adoptDay(day);
+    },
+    [adoptDay],
+  );
+
+  // Browser back/forward moves through the entries created by selectDay;
+  // follow the day in the URL without pushing a new entry.
+  useEffect(() => {
+    function onPopState() {
+      const dayParam = new URLSearchParams(window.location.search).get("day");
+      if (dayParam && dayParam !== selectedDayRef.current) {
+        adoptDay(dayParam);
+      }
+    }
+
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [adoptDay]);
 
   const refreshControls = { refresh: () => void refresh(), isRefreshing, lastRefreshedAt };
 
   const operations: DashboardOperations = {
     refresh,
+    selectDay,
     isRefreshing,
     capturePending,
     setCapturePending,
@@ -306,11 +468,25 @@ export function Dashboard({
           </div>
           <div className="date-navigation">
             <div className="day-controls" aria-label="Choose a day">
-              <Link href={`/?day=${previousDay}`} aria-label={`Previous day, ${formatDay(previousDay)}`}>&larr;</Link>
-              <Link className="today-link" href={`/?day=${localDay}`}>Today</Link>
-              <Link href={`/?day=${nextDay}`} aria-label={`Next day, ${formatDay(nextDay)}`}>&rarr;</Link>
+              <button
+                type="button"
+                aria-label={`Previous day, ${formatDay(previousDay)}`}
+                onClick={() => selectDay(previousDay)}
+              >&larr;</button>
+              <button
+                type="button"
+                className="today-link"
+                onClick={() => selectDay(localDay)}
+              >Today</button>
+              <button
+                type="button"
+                aria-label={`Next day, ${formatDay(nextDay)}`}
+                onClick={() => selectDay(nextDay)}
+              >&rarr;</button>
             </div>
-            <TaskCapture selectedDay={selectedDay} />
+            {/* Keyed by the selected day: switching days closes the capture
+                popover so it cannot submit against the wrong day. */}
+            <TaskCapture key={selectedDay} selectedDay={selectedDay} />
             <div className="date-tile" aria-label={formatDay(today.day)}>
               <span>{new Intl.DateTimeFormat("en-GB", { month: "short", timeZone: "UTC" }).format(new Date(`${today.day}T12:00:00Z`))}</span>
               <strong>{today.day.slice(8, 10)}</strong>
@@ -325,7 +501,32 @@ export function Dashboard({
           <div className="overview-item"><strong><OpenTaskCount taskIds={today.overdue_tasks.map((task) => task.id)} /></strong><span>Overdue</span></div>
         </div>
 
-        {refreshError && (
+        {dayLoading && showingOtherDay && (
+          <div className="integration-alert day-loading-alert" role="status" aria-live="polite">
+            <span className="alert-symbol day-loading-symbol" aria-hidden="true">…</span>
+            <span>
+              Loading {formatDay(selectedDay)}. Showing {formatDay(today.day)} until it loads.
+            </span>
+          </div>
+        )}
+
+        {selectedDayUnavailable && (
+          <div className="integration-alert refresh-alert" role="alert">
+            <span className="alert-symbol" aria-hidden="true">!</span>
+            <span>
+              Couldn&apos;t load {formatDay(selectedDay)}. Still showing {formatDay(today.day)}.
+            </span>
+            <button
+              className="refresh-retry"
+              type="button"
+              onClick={() => void loadDay(selectedDay)}
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        {refreshError && !showingOtherDay && (
           <div className="integration-alert refresh-alert" role="alert">
             <span className="alert-symbol" aria-hidden="true">!</span>
             <span>Refresh failed. Showing the last loaded information.</span>
@@ -354,7 +555,10 @@ export function Dashboard({
           </div>
         )}
 
-        <div className="content-grid">
+        <div
+          className="content-grid"
+          aria-busy={dayLoading && showingOtherDay ? true : undefined}
+        >
           <section className="panel calendar-panel" aria-labelledby="calendar-heading">
             <div className="panel-heading">
               <div>

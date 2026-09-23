@@ -193,6 +193,16 @@ body { margin: 0; min-height: 100vh; background: var(--paper); color: var(--ink)
 .capture-saved-alert { color: #3f7259; background: #eff7ef; border-color: #d8ecd9; }
 .capture-saved-alert .saved-symbol { background: #5c9a77; }
 
+.day-loading-alert { color: #547467; background: #f4f7f3; border-color: #dce7df; }
+.day-loading-symbol { background: #75847f; color: #fff; animation: day-loading-pulse 1200ms ease-in-out infinite; }
+@keyframes day-loading-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .45; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .day-loading-symbol { animation: none; }
+}
+
 .nav-link { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 16px; border: 1px solid transparent; border-radius: 10px; color: #a8c5b6; font-size: 13px; font-weight: 700; text-decoration: none; transition: background-color 140ms ease, color 140ms ease; }
 .nav-link:hover { color: #f3f8f2; background: #294d40; }
 .nav-link:focus-visible { outline: 2px solid #5c9a77; outline-offset: 2px; }
