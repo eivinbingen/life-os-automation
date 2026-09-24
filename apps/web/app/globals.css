@@ -290,3 +290,5 @@ body { margin: 0; min-height: 100vh; background: var(--paper); color: var(--ink)
   .week-row-today-mark { margin-top: 0; }
   .week-row-none { align-self: start; }
 }
+
+.weekly-retry-link { display: inline-flex; align-items: center; justify-content: center; padding: 0 16px; margin-top: 20px; text-decoration: none; }
