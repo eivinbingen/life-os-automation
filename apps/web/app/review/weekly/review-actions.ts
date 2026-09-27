@@ -214,3 +214,51 @@ export async function fetchLookBack(
     };
   }
 }
+
+export type CleanUpItem = {
+  id: string;
+  name: string;
+  project_name: string | null;
+  scheduled: string | null;
+  due: string | null;
+  overdue: boolean;
+  scheduled_in_week: boolean;
+};
+
+export type CleanUpSummary = {
+  week_start: string;
+  week_end: string;
+  local_day: string;
+  timezone: string;
+  captured_at: string;
+  items: CleanUpItem[];
+  statuses: { name: string; ok: boolean; error: string | null }[];
+  warnings: string[];
+};
+
+export async function fetchCleanUp(
+  weekStart: string,
+): Promise<{ ok: true; summary: CleanUpSummary } | { ok: false; error: string }> {
+  const base = apiUrl();
+  if (!base) {
+    return { ok: false, error: "The connection to the local Life OS service is not configured." };
+  }
+  try {
+    const response = await fetch(
+      `${base}/reviews/weekly/clean-up?week_start=${encodeURIComponent(weekStart)}`,
+      {
+        cache: "no-store",
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+    if (!response.ok) {
+      return { ok: false, error: "The clean-up queue could not be loaded. Please try again." };
+    }
+    return { ok: true, summary: (await response.json()) as CleanUpSummary };
+  } catch {
+    return {
+      ok: false,
+      error: "The Life OS service could not be reached. Check that it is running, then try again.",
+    };
+  }
+}

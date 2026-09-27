@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -318,3 +318,116 @@ def test_look_back_endpoint_absent_without_callables(review_app):
     store, client = review_app
     response = client.get("/reviews/weekly/look-back", params={"week_start": WEEK.isoformat()})
     assert response.status_code in (404, 501)
+
+
+def test_clean_up_endpoint_returns_queue(look_back_app):
+    store, client = look_back_app
+    response = client.get("/reviews/weekly/clean-up", params={"week_start": WEEK.isoformat()})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["week_start"] == WEEK.isoformat()
+    assert body["week_end"] == date(2026, 9, 20).isoformat()
+    assert body["timezone"] == "Europe/Zurich"
+    assert "local_day" in body
+    assert "captured_at" in body
+    assert body["items"] == []
+    assert body["statuses"] == []
+
+
+def test_clean_up_endpoint_qualifying_tasks_with_flags(tmp_path):
+    store = WeeklyReviewRepository(path=tmp_path / "var" / "life-os" / "weekly-reviews.json")
+
+    def fetch_events(day):
+        return []
+
+    def fetch_tasks(day):
+        return TaskFetchResult(tasks=[])
+
+    def update_task(task_id, update, done):
+        return True
+
+    def fetch_week_tasks(start, end):
+        from life_os.models.notion import Task
+
+        return TaskFetchResult(
+            tasks=[
+                Task(id="t1", name="Overdue", due=date(2026, 9, 10)),
+                Task(id="t2", name="In week", scheduled=datetime(2026, 9, 16, 10, 0)),
+                Task(id="t3", name="Both", scheduled=date(2026, 9, 17), due=date(2026, 9, 9)),
+            ],
+        )
+
+    fetch_week_events, _, fetch_done_week_tasks = week_fetchers()
+    app = create_app(
+        fetch_events,
+        fetch_tasks,
+        update_task,
+        fetch_week_events=fetch_week_events,
+        fetch_week_tasks=fetch_week_tasks,
+        fetch_done_week_tasks=fetch_done_week_tasks,
+        reviews=store,
+    )
+    client = TestClient(app)
+
+    response = client.get("/reviews/weekly/clean-up", params={"week_start": WEEK.isoformat()})
+    assert response.status_code == 200
+    items = response.json()["items"]
+    by_name = {item["name"]: item for item in items}
+    assert by_name["Overdue"]["overdue"] is True
+    assert by_name["Overdue"]["scheduled_in_week"] is False
+    assert by_name["In week"]["overdue"] is False
+    assert by_name["In week"]["scheduled_in_week"] is True
+    assert by_name["Both"]["overdue"] is True
+    assert by_name["Both"]["scheduled_in_week"] is True
+    # Overdue sorts first.
+    assert items[0]["name"] == "Both" or items[0]["name"] == "Overdue"
+
+
+def test_clean_up_endpoint_degrades_when_fetch_fails(tmp_path):
+    store = WeeklyReviewRepository(path=tmp_path / "var" / "life-os" / "weekly-reviews.json")
+
+    def fetch_events(day):
+        return []
+
+    def fetch_tasks(day):
+        return TaskFetchResult(tasks=[])
+
+    def update_task(task_id, update, done):
+        return True
+
+    def fetch_week_tasks(start, end):
+        raise RuntimeError("notion down")
+
+    fetch_week_events, _, fetch_done_week_tasks = week_fetchers()
+    app = create_app(
+        fetch_events,
+        fetch_tasks,
+        update_task,
+        fetch_week_events=fetch_week_events,
+        fetch_week_tasks=fetch_week_tasks,
+        fetch_done_week_tasks=fetch_done_week_tasks,
+        reviews=store,
+    )
+    client = TestClient(app)
+
+    response = client.get("/reviews/weekly/clean-up", params={"week_start": WEEK.isoformat()})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"] == []
+    assert body["statuses"] == [{"name": "Notion", "ok": False, "error": "notion down"}]
+
+
+def test_clean_up_route_not_swallowed_by_review_id_route(review_app):
+    store, client = review_app
+    # review_app registers no fetch_week_tasks; the specific route must still
+    # win over /reviews/weekly/{review_id} and return 501, not a 422.
+    response = client.get("/reviews/weekly/clean-up", params={"week_start": WEEK.isoformat()})
+    assert response.status_code == 501
+    assert "clean-up queue" in response.json()["detail"]
+
+
+def test_clean_up_endpoint_normalizes_non_monday_week_start(look_back_app):
+    store, client = look_back_app
+    response = client.get("/reviews/weekly/clean-up", params={"week_start": "2026-09-16"})
+    assert response.status_code == 200
+    assert response.json()["week_start"] == WEEK.isoformat()
