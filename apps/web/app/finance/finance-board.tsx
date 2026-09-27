@@ -14,6 +14,9 @@ function formatAmount(value: number) {
 }
 
 function formatSignedAmount(value: number) {
+  if (Math.abs(value) < ON_BUDGET_THRESHOLD) {
+    return formatAmount(0);
+  }
   const sign = value > 0 ? "+" : MINUS;
   return `${sign}${amountFormatter.format(Math.abs(value))} NOK`;
 }
@@ -45,6 +48,7 @@ export function FinanceBoard({
   currentMonth: string;
 }) {
   const accountCount = review.accounts.length;
+  const totalOnBudget = Math.abs(review.total_difference) < ON_BUDGET_THRESHOLD;
   const totalUnder = review.total_difference > 0;
 
   return (
@@ -75,10 +79,18 @@ export function FinanceBoard({
           <span>Actual spending</span>
         </div>
         <div className="overview-item">
-          <strong className={totalUnder ? "finance-diff-under" : "finance-diff-over"}>
+          <strong
+            className={
+              totalOnBudget
+                ? "finance-diff-zero"
+                : totalUnder
+                  ? "finance-diff-under"
+                  : "finance-diff-over"
+            }
+          >
             {formatSignedAmount(review.total_difference)}
           </strong>
-          <span>{totalUnder ? "Under budget" : "Over budget"}</span>
+          <span>{totalOnBudget ? "On budget" : totalUnder ? "Under budget" : "Over budget"}</span>
         </div>
       </div>
 

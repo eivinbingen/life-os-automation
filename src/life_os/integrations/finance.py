@@ -94,11 +94,16 @@ def get_month_categories(token: str, plan_id: str, month: str) -> dict[str, dict
 
 
 def create_sheets_service(credentials_file: Path) -> build:
-    credentials = service_account.Credentials.from_service_account_file(
-        filename=str(credentials_file),
-        scopes=SCOPES,
-    )
-    return build("sheets", "v4", credentials=credentials)
+    try:
+        credentials = service_account.Credentials.from_service_account_file(
+            filename=str(credentials_file),
+            scopes=SCOPES,
+        )
+        return build("sheets", "v4", credentials=credentials)
+    except Exception as error:
+        raise SheetsError(
+            f"Google Sheets credentials could not be loaded: {error}"
+        ) from error
 
 
 def get_forecast_rows(service: build, spreadsheet_id: str | None, range_name: str) -> list[list]:

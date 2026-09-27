@@ -72,6 +72,7 @@ def run_monthly_review(month: str, token: str) -> None:
     monthly_forecast = build_monthly_forecast(
         rows=forecast_rows,
         month_header=format_sheet_month(month),
+        category_mapping=CATEGORY_MAPPINGS,
     )
 
     comparison = compare_forecast_actuals(monthly_forecast, monthly_actuals)

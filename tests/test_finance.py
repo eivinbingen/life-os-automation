@@ -1,7 +1,12 @@
 import pytest
 
 from life_os.category_mappings import CATEGORY_MAPPINGS, EXCLUDED_CATEGORIES
-from life_os.models.finance import InvalidCategoryMappingError, YnabError
+from life_os.integrations.finance import create_sheets_service
+from life_os.models.finance import (
+    InvalidCategoryMappingError,
+    SheetsError,
+    YnabError,
+)
 from life_os.services.finance import (
     build_finance_review,
     build_monthly_actuals,
@@ -174,7 +179,7 @@ class TestBuildMonthlyForecast:
     def test_reads_month_column_and_parses_numbers(self):
         rows = make_sheet_rows()
 
-        forecast = build_monthly_forecast(rows, "Sep 2026")
+        forecast = build_monthly_forecast(rows, "Sep 2026", CATEGORY_MAPPINGS)
 
         assert forecast["personal everyday spending"] == 1500.0
         assert forecast["personal fixed spending"] == 2100.0
@@ -182,7 +187,7 @@ class TestBuildMonthlyForecast:
     def test_totals_sum_categories(self):
         rows = make_sheet_rows()
 
-        forecast = build_monthly_forecast(rows, "Sep 2026")
+        forecast = build_monthly_forecast(rows, "Sep 2026", CATEGORY_MAPPINGS)
 
         assert forecast["total"] == 500.0 + 0.0 + 2100.0 + 0.0 + 1500.0 + 0.0
 
@@ -190,7 +195,7 @@ class TestBuildMonthlyForecast:
         rows = make_sheet_rows()
 
         with pytest.raises(ValueError, match="Sep 2025"):
-            build_monthly_forecast(rows, "Sep 2025")
+            build_monthly_forecast(rows, "Sep 2025", CATEGORY_MAPPINGS)
 
     def test_missing_mapped_column_raises(self):
         rows = [
@@ -199,7 +204,19 @@ class TestBuildMonthlyForecast:
         ]
 
         with pytest.raises(ValueError, match="missing mapped columns"):
-            build_monthly_forecast(rows, "Sep 2026")
+            build_monthly_forecast(rows, "Sep 2026", CATEGORY_MAPPINGS)
+
+    def test_honors_the_supplied_category_mapping(self):
+        rows = [
+            ["Month", "Shared fixed contribution", "Custom Column"],
+            ["Sep 2026", "500", "1 200"],
+        ]
+        mapping = {"Custom Column": ["cat-1"]}
+
+        forecast = build_monthly_forecast(rows, "Sep 2026", mapping)
+
+        assert forecast["custom column"] == 1200.0
+        assert forecast["total"] == 1200.0
 
     def test_empty_cells_become_zero(self):
         rows = [
@@ -208,7 +225,7 @@ class TestBuildMonthlyForecast:
             ["Sep 2026", "", "2100", "1500", ""],
         ]
 
-        forecast = build_monthly_forecast(rows, "Sep 2026")
+        forecast = build_monthly_forecast(rows, "Sep 2026", CATEGORY_MAPPINGS)
 
         assert forecast["travel & one-offs"] == 0.0
 
@@ -219,7 +236,7 @@ class TestBuildMonthlyForecast:
             ["Sep 2026", "500", "2 100", "1\xa0500 kr", "300"],
         ]
 
-        forecast = build_monthly_forecast(rows, "Sep 2026")
+        forecast = build_monthly_forecast(rows, "Sep 2026", CATEGORY_MAPPINGS)
 
         assert forecast["personal everyday spending"] == 1500.0
         assert forecast["personal fixed spending"] == 2100.0
@@ -233,6 +250,12 @@ class TestCompareForecastActuals:
         comparison = compare_forecast_actuals(forecast, actuals)
 
         assert comparison["personal fixed spending"] == -300.0
+
+
+class TestCreateSheetsService:
+    def test_wraps_credential_failures_in_sheets_error(self, tmp_path):
+        with pytest.raises(SheetsError, match="credentials"):
+            create_sheets_service(tmp_path / "missing.json")
 
 
 class TestFormatSheetMonth:

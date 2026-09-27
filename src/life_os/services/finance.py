@@ -1,7 +1,6 @@
 from collections.abc import Callable
 from datetime import date
 
-from life_os.category_mappings import CATEGORY_MAPPINGS
 from life_os.models.finance import (
     AccountBalance,
     CategoryComparison,
@@ -118,7 +117,11 @@ def build_monthly_actuals(
     return actuals
 
 
-def build_monthly_forecast(rows: list[list], month_header: str) -> dict[str, float]:
+def build_monthly_forecast(
+    rows: list[list],
+    month_header: str,
+    category_mapping: dict[str, list[str]],
+) -> dict[str, float]:
     """Read one month column from forecast sheet rows into values per column.
 
     Rows come from the Sheets adapter as-is. The month header uses the
@@ -126,12 +129,12 @@ def build_monthly_forecast(rows: list[list], month_header: str) -> dict[str, flo
     raises rather than silently counting as zero, which would understate the
     forecast and distort every difference.
     """
-    mapping = _column_mapping(rows)
+    mapping = _column_mapping(rows, category_mapping)
     _, header_row = _header_row(rows, month_header)
 
     expected_columns = {
         column.lower()
-        for column, category_ids in CATEGORY_MAPPINGS.items()
+        for column, category_ids in category_mapping.items()
         if category_ids
     }
     missing_columns = sorted(expected_columns - set(mapping))
@@ -174,7 +177,9 @@ def build_finance_review(
     this function assumes every mapped category exists in categories.
     """
     actuals = build_monthly_actuals(categories, category_mapping)
-    forecast = build_monthly_forecast(sheet_rows, format_sheet_month(month))
+    forecast = build_monthly_forecast(
+        sheet_rows, format_sheet_month(month), category_mapping
+    )
     comparison = compare_forecast_actuals(forecast, actuals)
 
     category_comparisons = [
@@ -253,12 +258,15 @@ def parse_number(value: str | int | float | None) -> float:
     return float(normalized) if normalized else 0.0
 
 
-def _column_mapping(rows: list[list]) -> dict[str, int]:
+def _column_mapping(
+    rows: list[list], category_mapping: dict[str, list[str]]
+) -> dict[str, int]:
+    mapped_columns = {column.lower() for column in category_mapping}
     row = _header_row(rows, "month")[1]
     return {
         header.lower(): index
         for index, header in enumerate(row)
-        if header.lower() in CATEGORY_MAPPINGS or header.lower() in NON_SPENDING_HEADERS
+        if header.lower() in mapped_columns or header.lower() in NON_SPENDING_HEADERS
     }
 
 

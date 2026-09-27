@@ -65,6 +65,20 @@ it("renders forecast, actual, and total difference amounts", () => {
   expect(within(totalRow).getByText("−8,732.43 NOK")).toBeTruthy();
 });
 
+it("labels an exactly-zero total as on budget without a sign", () => {
+  const balanced: FinanceReview = {
+    ...review,
+    total_actual: review.total_forecast,
+    total_difference: 0,
+  };
+  render(<FinanceBoard review={balanced} currentMonth="2026-09-01" />);
+
+  const summary = screen.getByLabelText("Month at a glance");
+  expect(within(summary).getByText("On budget")).toBeTruthy();
+  expect(within(summary).queryByText("−0.00 NOK")).toBeNull();
+  expect(within(summary).queryByText("+0.00 NOK")).toBeNull();
+});
+
 it("keeps the requested month and retry when the service fails", async () => {
   vi.stubEnv("LIFE_OS_API_URL", "http://fake.invalid");
   vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
