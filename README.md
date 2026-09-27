@@ -62,9 +62,19 @@ This is a transitional overview. The guided workflow, contextual writes, and sav
 history are planned in [Weekly Review V2](docs/weekly-review-v2.md); they are not
 implemented by this page.
 
-## Run the monthly finance review
+## Monthly finance review (read-only V1)
 
-The finance review runs independently from the Today dashboard. It requires a YNAB API token and a Google service account with read access to the forecast spreadsheet.
+Open `/finance` or choose Finance in the sidebar to review the current month, and
+navigate to earlier or later months. The page shows YNAB account balances and
+forecast-versus-actual spending by mapped category; a difference is marked
+under, over, or on budget without relying on color alone. If YNAB or Google
+Sheets is unavailable, the page reports the failing source instead of partial
+values. The review is read-only: budgets, transactions, forecasts, and category
+mappings cannot be edited from the app.
+
+## Run the monthly finance review from the terminal
+
+The finance review also runs independently from the Today dashboard. It requires a YNAB API token and a Google service account with read access to the forecast spreadsheet.
 
 1. Add `YNAB_TOKEN` and `GOOGLE_SPREADSHEET_ID` to the repository's `.env` file.
 
@@ -82,6 +92,6 @@ The finance review runs independently from the Today dashboard. It requires a YN
    uv run python src/finance/monthly_review.py
    ```
 
-The script checks the YNAB category mapping before calculating results, then prints account balances, actual spending, forecast amounts, and their differences. If categories have changed, review `src/finance/category_mappings.py` before rerunning it.
+The script checks the YNAB category mapping before calculating results, then prints account balances, actual spending, forecast amounts, and their differences. If categories have changed, review `src/life_os/category_mappings.py` before rerunning it. The web page reports the same mapping problems if they appear.
 
 The `.env` file and all credential files are ignored by Git. Keep them local, and avoid sharing finance review output because it contains personal financial data.
