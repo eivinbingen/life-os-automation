@@ -89,7 +89,23 @@ Future surfaces could cover health, habits, longer-term planning, and personal a
 | Financial forecasts               | Google Sheets              |
 | Workouts                          | Strava or wearable service |
 
-The application will initially read from and combine these systems. It should not silently create competing versions of their data.
+The application will initially read from and combine these systems, with selected
+writes going back to the authoritative source. It should not create competing
+editable versions of their data.
+
+Notion is scaffolding for Life OS and its current source of truth, not the intended
+permanent core backend. The destination is a standalone Life OS app that owns its
+core operational data. Avoid adding app-only properties to Notion where possible,
+and do not introduce a second writable source of truth while Notion is still
+needed for daily workflows.
+
+Make Life OS independently usable before migrating. A practical readiness test is
+being able to go roughly two weeks without relying on its Notion pages for core
+workflows such as task capture, Today, projects, goals, reviews, and studies. Once
+that is possible, make a deliberate cutover to the app's own database, following
+the [architecture transition strategy](architecture.md#notion-transition). Notion
+can remain an archive or an optional home for general notes, but no longer part of
+the core Life OS workflow.
 
 ## 9. Initial Users and Scope
 
@@ -122,7 +138,7 @@ If the initial dashboard proves useful:
 3. Expose reusable domain operations through MCP.
 4. Add persistence for application-specific information that lacks an appropriate existing home.
 5. Consider PostgreSQL when the application needs history, preferences, cached data, or native entities.
-6. Potentially migrate selected Notion databases if the custom application becomes a demonstrably better place to manage them.
+6. Make Life OS independently usable, then migrate core Notion data in a deliberate cutover once the user can stop using Notion for those workflows.
 7. Consider hosting once remote access provides enough value to justify authentication and operational complexity.
 
 ## 12. Non-Goals for the Initial Version
@@ -153,7 +169,7 @@ The initial product succeeds if:
 
 - Which actions should eventually be writable from the dashboard?
 - When does PostgreSQL become justified?
-- Should the application replace any Notion databases or remain an interface over them?
+- Which core workflows still need app support before Life OS is independently usable?
 - How much planning should be rule-based versus AI-assisted?
 - What information belongs on the Today dashboard without making it overwhelming?
 - Which health data would be useful rather than merely interesting?

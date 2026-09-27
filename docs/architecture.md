@@ -119,6 +119,36 @@ PostgreSQL should only be introduced when the application needs capabilities suc
 - Reliable synchronization state.
 - Native entities that no longer belong in Notion.
 
+### Notion transition
+
+Notion is scaffolding and the current source of truth for core Life OS data, not
+the intended permanent core backend. Keep the domain model independent of Notion
+and avoid adding app-only properties to Notion where possible. App-owned data,
+such as review drafts and history, can have separate persistence without creating
+a second writable copy of tasks, projects, or goals.
+
+While the user still relies on Notion for core operational workflows, Notion
+remains authoritative, including for actions taken through the Life OS app. Do
+not introduce a second writable source of truth or build ongoing bidirectional
+synchronization to support an early backend migration.
+
+The migration trigger is an independently usable Life OS app: the user can stop
+using Notion for core operational workflows. A practical readiness test is being
+able to go roughly two weeks without relying on the Life OS pages in Notion.
+Then perform a deliberate cutover:
+
+1. Freeze core structural changes in Notion.
+2. Export and migrate the current Life OS data into the app's own database.
+3. Make the Life OS app and database authoritative for core Life OS data.
+4. Stop writing core Life OS data to Notion.
+5. Keep Notion only as an archive or for optional general notes and reference
+   material, if desired.
+
+This is a migration, not a permanent synchronization arrangement. Google Calendar,
+YNAB, and other domain integrations retain their own source-of-truth roles. The
+[roadmap](roadmap.md) frames readiness as making Life OS independently usable;
+replacing the Notion backend is the final step, not the prerequisite.
+
 ## Planned Weekly Review V2 persistence and services
 
 [Weekly Review V2](weekly-review-v2.md) adds a guided domain workflow with draft
