@@ -184,27 +184,39 @@ export async function refreshToday(day: string): Promise<RefreshResult> {
 
 export async function refreshWeek(day: string): Promise<RefreshWeekResult> {
   const apiUrl = process.env.LIFE_OS_API_URL;
-
   if (!apiUrl) {
-    return { ok: false, error: "LIFE_OS_API_URL is not configured" };
+    return { ok: false, error: "The connection to the local Life OS service is not configured." };
   }
 
+  // A weekly read includes Calendar, paginated tasks, and project lookups.
+  // Normal requests can exceed Today's three-second refresh budget.
+  const signal = AbortSignal.timeout(30_000);
+  let response: Response;
   try {
-    const response = await fetch(`${apiUrl}/week?day=${encodeURIComponent(day)}`, {
+    response = await fetch(`${apiUrl}/week?day=${encodeURIComponent(day)}`, {
       cache: "no-store",
-      // Report a dead backend promptly instead of a pending refresh forever.
-      signal: AbortSignal.timeout(3000),
+      signal,
     });
-
-    if (!response.ok) {
-      return { ok: false, error: "Could not load the week's data" };
-    }
-
+  } catch {
+    return {
+      ok: false,
+      error: signal.aborted
+        ? "Loading this week took too long. Calendar or task data may be slow; please try again."
+        : "The local Life OS service could not be reached. Check that it is running, then try again.",
+    };
+  }
+  if (!response.ok) {
+    return { ok: false, error: "The Life OS service could not load this week's data. Please try again." };
+  }
+  try {
     return { ok: true, week: (await response.json()) as Week };
   } catch {
-    // Connection refused, timeout, or any other network failure: report it
-    // as a result instead of throwing out of the server action.
-    return { ok: false, error: "The Life OS service could not be reached" };
+    return {
+      ok: false,
+      error: signal.aborted
+        ? "Loading this week took too long. Calendar or task data may be slow; please try again."
+        : "The Life OS service returned an unreadable response. Please try again.",
+    };
   }
 }
 

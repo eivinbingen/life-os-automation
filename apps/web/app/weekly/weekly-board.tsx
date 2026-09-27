@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
-import Link from "next/link";
 
 import type { Task, Week } from "../actions";
-import { APP_TIME_ZONE, formatDay, shiftDay, startOfWeek } from "../date-utils";
+import { DayControls } from "../day-controls";
+import { APP_TIME_ZONE, startOfWeek } from "../date-utils";
 
 const timeFormatter = new Intl.DateTimeFormat("en-GB", {
   hour: "2-digit",
@@ -79,9 +79,7 @@ function TaskList({
 }
 
 export function WeeklyBoard({ week, localDay }: { week: Week; localDay: string }) {
-  const previousWeekStart = shiftDay(week.start, -7);
   const currentWeekStart = startOfWeek(localDay);
-  const nextWeekStart = shiftDay(week.start, 7);
 
   const eventCount = useMemo(
     () => new Set(week.days.flatMap((day) => day.events.map((event) => event.id))).size,
@@ -119,20 +117,15 @@ export function WeeklyBoard({ week, localDay }: { week: Week; localDay: string }
           </p>
         </div>
         <div className="date-navigation">
-          <div className="day-controls" aria-label="Choose a week">
-            <Link
-              href={`/weekly?day=${previousWeekStart}`}
-              aria-label={`Previous week, ${formatDay(previousWeekStart)}`}
-            >&larr;</Link>
-            <Link
-              className="today-link"
-              href={`/weekly?day=${currentWeekStart}`}
-            >This week</Link>
-            <Link
-              href={`/weekly?day=${nextWeekStart}`}
-              aria-label={`Next week, ${formatDay(nextWeekStart)}`}
-            >&rarr;</Link>
-          </div>
+          <DayControls
+            selectedDay={week.start}
+            currentDay={currentWeekStart}
+            basePath="/weekly"
+            stepDays={7}
+            label="Choose a week"
+            currentLabel="This week"
+            currentHref={`/weekly?day=${currentWeekStart}`}
+          />
         </div>
       </section>
 

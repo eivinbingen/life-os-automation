@@ -62,7 +62,7 @@ describe("Day navigation", () => {
     );
     renderDashboard();
 
-    await user.click(screen.getByRole("button", { name: /Next day/ }));
+    await user.click(screen.getByRole("link", { name: /Next day/ }));
 
     // The heading and URL update immediately, before the load resolves.
     expect(screen.getByRole("heading", { name: "Tomorrow." })).toBeTruthy();
@@ -86,7 +86,7 @@ describe("Day navigation", () => {
     );
     renderDashboard();
 
-    await user.click(screen.getByRole("button", { name: /Previous day/ }));
+    await user.click(screen.getByRole("link", { name: /Previous day/ }));
 
     const loading = screen.getByRole("status");
     expect(loading.textContent).toContain("Loading");
@@ -109,7 +109,7 @@ describe("Day navigation", () => {
     );
     renderDashboard();
 
-    await user.click(screen.getByRole("button", { name: /Next day/ }));
+    await user.click(screen.getByRole("link", { name: /Next day/ }));
 
     resolveLoad({
       ok: true,
@@ -140,20 +140,20 @@ describe("Day navigation", () => {
       .mockResolvedValueOnce({ ok: true, today: makeToday({ day: "2026-09-18" }) });
     renderDashboard();
 
-    await user.click(screen.getByRole("button", { name: /Previous day/ }));
+    await user.click(screen.getByRole("link", { name: /Previous day/ }));
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Yesterday." })).toBeTruthy();
     });
     expect(refreshToday).toHaveBeenCalledWith("2026-09-19");
 
-    await user.click(screen.getByRole("button", { name: /Previous day/ }));
+    await user.click(screen.getByRole("link", { name: /Previous day/ }));
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Friday." })).toBeTruthy();
     });
     expect(refreshToday).toHaveBeenCalledWith("2026-09-18");
 
     // Back to the first visited day: served from the cache, no new fetch.
-    await user.click(screen.getByRole("button", { name: /Next day/ }));
+    await user.click(screen.getByRole("link", { name: /Next day/ }));
     expect(screen.getByRole("heading", { name: "Yesterday." })).toBeTruthy();
     expect(screen.getByLabelText("Saturday, 19 September 2026")).toBeTruthy();
     expect(refreshToday).toHaveBeenCalledTimes(2);
@@ -178,7 +178,7 @@ describe("Day navigation", () => {
 
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       const click = user.click(
-        screen.getByRole("button", { name: /Previous day/ }),
+        screen.getByRole("link", { name: /Previous day/ }),
       );
       await vi.advanceTimersByTimeAsync(0);
       await click;
@@ -208,9 +208,9 @@ describe("Day navigation", () => {
 
     // Three quick selections: 09-19, 09-18, then back to 09-19 (cached).
     // The heading follows the last click; the latest selection wins.
-    await user.click(screen.getByRole("button", { name: /Previous day/ }));
-    await user.click(screen.getByRole("button", { name: /Previous day/ }));
-    await user.click(screen.getByRole("button", { name: /Next day/ }));
+    await user.click(screen.getByRole("link", { name: /Previous day/ }));
+    await user.click(screen.getByRole("link", { name: /Previous day/ }));
+    await user.click(screen.getByRole("link", { name: /Next day/ }));
 
     expect(screen.getByRole("heading", { name: "Yesterday." })).toBeTruthy();
     expect(window.location.search).toBe("?day=2026-09-19");
@@ -246,7 +246,7 @@ describe("Day navigation", () => {
     });
     renderDashboard();
 
-    await user.click(screen.getByRole("button", { name: /Next day/ }));
+    await user.click(screen.getByRole("link", { name: /Next day/ }));
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Refresh" })).toBeTruthy();
     });
@@ -264,7 +264,7 @@ describe("Day navigation", () => {
     refreshToday.mockResolvedValue({ ok: false, error: "Could not load today's data" });
     renderDashboard();
 
-    await user.click(screen.getByRole("button", { name: /Next day/ }));
+    await user.click(screen.getByRole("link", { name: /Next day/ }));
 
     // The failure names the selected day, not the fallback data's day.
     const alert = screen.getByRole("alert");
@@ -304,7 +304,7 @@ describe("Day navigation", () => {
       }),
     );
 
-    await user.click(screen.getByRole("button", { name: /Next day/ }));
+    await user.click(screen.getByRole("link", { name: /Next day/ }));
 
     // The old day's task is still visible (fallback), but the loading state
     // makes clear it belongs to the previous day.
@@ -327,7 +327,7 @@ describe("Day navigation", () => {
     const input = screen.getByPlaceholderText("What needs doing?");
     await user.type(input, "Wrong day task");
 
-    await user.click(screen.getByRole("button", { name: /Next day/ }));
+    await user.click(screen.getByRole("link", { name: /Next day/ }));
 
     expect(screen.queryByPlaceholderText("What needs doing?")).toBeNull();
   });
@@ -355,7 +355,7 @@ describe("Day navigation", () => {
       expect(screen.getByRole("dialog")).toBeTruthy();
     });
 
-    await user.click(screen.getByRole("button", { name: /Next day/ }));
+    await user.click(screen.getByRole("link", { name: /Next day/ }));
 
     expect(screen.queryByRole("dialog")).toBeNull();
   });
@@ -376,9 +376,9 @@ describe("Day navigation", () => {
 
     // Select yesterday (slow), then Today (fast, re-selecting the initial
     // day). The heading follows the click immediately.
-    await user.click(screen.getByRole("button", { name: /Previous day/ }));
+    await user.click(screen.getByRole("link", { name: /Previous day/ }));
     expect(screen.getByRole("heading", { name: "Yesterday." })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Today" }));
+    await user.click(screen.getByRole("link", { name: "Today" }));
     expect(screen.getByRole("heading", { name: "Today." })).toBeTruthy();
 
     // Yesterday's late response (300ms) must not overwrite the newer
@@ -403,7 +403,7 @@ describe("Day navigation", () => {
 
     // Start a navigation load for yesterday, then hit Refresh before it
     // resolves. Both requests are now in flight for the same day.
-    await user.click(screen.getByRole("button", { name: /Previous day/ }));
+    await user.click(screen.getByRole("link", { name: /Previous day/ }));
     await user.click(screen.getByRole("button", { name: "Refresh" }));
     expect(refreshToday).toHaveBeenCalledTimes(2);
 

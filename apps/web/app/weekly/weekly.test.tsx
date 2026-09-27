@@ -64,3 +64,54 @@ it("labels a timed event carried into the next day as ongoing", () => {
   expect(screen.getByText("Ongoing")).toBeTruthy();
   expect(screen.queryByText("23:00")).toBeNull();
 });
+
+it("accepts a healthy weekly response after the old three-second cutoff", async () => {
+  vi.useFakeTimers();
+  vi.stubEnv("LIFE_OS_API_URL", "http://fake.invalid");
+  const controllers: AbortController[] = [];
+  const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
+    const controller = new AbortController();
+    controllers.push(controller);
+    setTimeout(() => controller.abort(), ms);
+    return controller.signal;
+  });
+  vi.stubGlobal("fetch", vi.fn((_url, {signal}) => new Promise((resolve, reject) => {
+    signal.addEventListener("abort", () => reject(new Error("aborted")));
+    setTimeout(() => resolve({ok: true, json: async () => week}), 4_000);
+  })));
+  try {
+    const pending = refreshWeek("2026-09-14");
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(await pending).toEqual({ok: true, week});
+    expect(controllers[0].signal.aborted).toBe(false);
+  } finally {
+    timeout.mockRestore();
+    vi.useRealTimers();
+  }
+});
+
+it("reports a bounded slow-load timeout distinctly from an unreachable backend", async () => {
+  vi.useFakeTimers();
+  vi.stubEnv("LIFE_OS_API_URL", "http://fake.invalid");
+  const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), ms);
+    return controller.signal;
+  });
+  vi.stubGlobal("fetch", vi.fn((_url, {signal}) => new Promise((_resolve, reject) => {
+    signal.addEventListener("abort", () => reject(new Error("aborted")));
+  })));
+  try {
+    const pending = refreshWeek("2026-09-14");
+    await vi.advanceTimersByTimeAsync(30_000);
+    const result = await pending;
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("took too long");
+      expect(result.error).not.toContain("could not be reached");
+    }
+  } finally {
+    timeout.mockRestore();
+    vi.useRealTimers();
+  }
+});
