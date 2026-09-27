@@ -49,3 +49,23 @@ class MappingProblems:
             or self.unknown_excluded
             or self.unmapped_active
         )
+
+
+class YnabError(Exception):
+    """YNAB API could not be reached or refused the request."""
+
+
+class SheetsError(Exception):
+    """Google Sheets could not be reached or refused the request."""
+
+
+class ForecastRowMissingError(SheetsError):
+    """The forecast sheet has no row for the requested month."""
+
+
+class InvalidCategoryMappingError(Exception):
+    """The YNAB-to-forecast mapping has problems that block calculation."""
+
+    def __init__(self, problems: MappingProblems):
+        self.problems = problems
+        super().__init__("The YNAB category mapping needs attention")

@@ -1,6 +1,7 @@
 import pytest
 
 from life_os.category_mappings import CATEGORY_MAPPINGS, EXCLUDED_CATEGORIES
+from life_os.models.finance import InvalidCategoryMappingError, YnabError
 from life_os.services.finance import (
     build_finance_review,
     build_monthly_actuals,
@@ -8,6 +9,7 @@ from life_os.services.finance import (
     compare_forecast_actuals,
     format_mapping_problems,
     format_sheet_month,
+    get_finance_review,
     validate_category_mapping,
 )
 
@@ -283,3 +285,33 @@ class TestBuildFinanceReview:
 
         summed = sum(c.difference for c in review.categories)
         assert review.total_difference == pytest.approx(summed)
+
+
+class TestGetFinanceReview:
+    def test_composes_review_from_fetched_data(self):
+        def fetch_data(month):
+            assert month == "2026-09-01"
+            return {}, make_categories(), make_sheet_rows()
+
+        review = get_finance_review(
+            "2026-09-01", fetch_data, CATEGORY_MAPPINGS, EXCLUDED_CATEGORIES
+        )
+
+        assert review.month == "2026-09-01"
+        assert review.total_actual == 6600.0
+
+    def test_raises_on_mapping_problems(self):
+        def fetch_data(month):
+            return {}, {"active-1": ynab_category("Groceries", "Everyday", -100.0)}, []
+
+        with pytest.raises(InvalidCategoryMappingError) as excinfo:
+            get_finance_review("2026-09-01", fetch_data, {}, {})
+
+        assert excinfo.value.problems.unmapped_active
+
+    def test_propagates_source_errors(self):
+        def fetch_data(month):
+            raise YnabError("YNAB request failed")
+
+        with pytest.raises(YnabError):
+            get_finance_review("2026-09-01", fetch_data, CATEGORY_MAPPINGS, EXCLUDED_CATEGORIES)

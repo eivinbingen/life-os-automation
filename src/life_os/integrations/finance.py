@@ -1,4 +1,5 @@
 import os
+from datetime import date
 from pathlib import Path
 
 import requests
@@ -7,7 +8,9 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+from life_os.models.finance import ForecastRowMissingError, SheetsError, YnabError
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 FINANCE_CREDENTIALS_FILE = PROJECT_ROOT / "credentials.json"
 
 SCOPES = [
@@ -15,18 +18,6 @@ SCOPES = [
 ]
 
 YNAB_BASE_URL = "https://api.ynab.com/v1"
-
-
-class YnabError(Exception):
-    """YNAB API could not be reached or refused the request."""
-
-
-class SheetsError(Exception):
-    """Google Sheets could not be reached or refused the request."""
-
-
-class ForecastRowMissingError(SheetsError):
-    """The forecast sheet has no row for the requested month."""
 
 
 # --- YNAB ---
@@ -154,8 +145,6 @@ def fetch_finance_data(month: str) -> tuple[dict, dict, list[list]]:
     plan_id = select_plan(plans, planname="Eivin - Personal")
     accounts = get_accounts(plan_id=plan_id, token=token)
     categories = get_month_categories(token, plan_id, month)
-
-    from datetime import date
 
     parsed_month = date.fromisoformat(month)
     month_header = f"{parsed_month:%b} {parsed_month:%Y}"

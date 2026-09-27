@@ -1,8 +1,12 @@
+from collections.abc import Callable
+from datetime import date
+
 from life_os.category_mappings import CATEGORY_MAPPINGS
 from life_os.models.finance import (
     AccountBalance,
     CategoryComparison,
     FinanceReview,
+    InvalidCategoryMappingError,
     MappingProblems,
 )
 
@@ -203,10 +207,35 @@ def build_finance_review(
     )
 
 
+def get_finance_review(
+    month: str,
+    fetch_data: Callable[[str], tuple[dict, dict, list[list]]],
+    category_mapping: dict[str, list[str]],
+    excluded_categories: dict[str, str],
+) -> FinanceReview:
+    """Fetch and compose one month's review, all-or-nothing.
+
+    Unlike get_today, a source failure does not degrade gracefully: YNAB and
+    Sheets errors propagate so the caller can report which source is
+    unavailable instead of showing partial values that could mislead.
+    """
+    accounts, categories, sheet_rows = fetch_data(month)
+
+    problems = validate_category_mapping(categories, category_mapping, excluded_categories)
+    if problems.has_problems():
+        raise InvalidCategoryMappingError(problems)
+
+    return build_finance_review(
+        month=month,
+        accounts=accounts,
+        categories=categories,
+        sheet_rows=sheet_rows,
+        category_mapping=category_mapping,
+    )
+
+
 def format_sheet_month(month: str) -> str:
     """Convert an ISO first-of-month date into the sheet's "Sep 2026" format."""
-    from datetime import date
-
     parsed_month = date.fromisoformat(month)
     return f"{parsed_month:%b} {parsed_month:%Y}"
 
