@@ -5,6 +5,8 @@ import uvicorn
 from dotenv import load_dotenv
 
 from life_os.api import create_app
+from life_os.category_mappings import CATEGORY_MAPPINGS, EXCLUDED_CATEGORIES
+from life_os.integrations.finance import fetch_finance_data
 from life_os.integrations.google_calendar import (
     get_calendar_service,
     get_events_for_day,
@@ -16,6 +18,7 @@ from life_os.integrations.notion_tasks import (
     fetch_tasks_for_range,
     update_task,
 )
+from life_os.services.finance import get_finance_review
 from life_os.services.weekly_reviews import STORE_ENV_VAR, WeeklyReviewRepository
 
 
@@ -45,13 +48,26 @@ def main():
     update = partial(update_task, token)
     create = partial(create_task, token, data_source_id)
 
+    get_finance = partial(
+        get_finance_review,
+        fetch_data=fetch_finance_data,
+        category_mapping=CATEGORY_MAPPINGS,
+        excluded_categories=EXCLUDED_CATEGORIES,
+    )
+
     # The review store resolves from the repository root regardless of the
     # launch working directory.
     os.environ.setdefault(STORE_ENV_VAR, str(_repository_root()))
     reviews = WeeklyReviewRepository()
 
     app = create_app(
-        fetch_events, fetch_tasks, update, create, fetch_week_events, fetch_week_tasks,
+        fetch_events,
+        fetch_tasks,
+        update,
+        create,
+        fetch_week_events,
+        fetch_week_tasks,
+        get_finance=get_finance,
         reviews=reviews,
     )
     uvicorn.run(app, host="127.0.0.1", port=8000)

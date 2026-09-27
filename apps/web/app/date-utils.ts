@@ -34,6 +34,25 @@ export function startOfWeek(day: string) {
   return shiftDay(day, -back);
 }
 
+export function startOfMonth(day: string) {
+  return `${day.slice(0, 7)}-01`;
+}
+
+export function shiftMonth(month: string, amount: number) {
+  const date = new Date(`${month}T12:00:00Z`);
+  date.setUTCDate(1);
+  date.setUTCMonth(date.getUTCMonth() + amount);
+  return `${date.toISOString().slice(0, 7)}-01`;
+}
+
+export function formatMonth(month: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${month}T12:00:00Z`));
+}
+
 export function dayHeading(day: string, localDay: string) {
   if (day === localDay) return "Today";
   if (day === shiftDay(localDay, -1)) return "Yesterday";

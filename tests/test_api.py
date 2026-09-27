@@ -4,6 +4,15 @@ from fastapi.testclient import TestClient
 from requests import HTTPError, Response
 
 from life_os.api import create_app
+from life_os.models.finance import (
+    AccountBalance,
+    CategoryComparison,
+    FinanceReview,
+    InvalidCategoryMappingError,
+    MappingProblems,
+    SheetsError,
+    YnabError,
+)
 from life_os.models.notion import (
     UNSET,
     Task,
@@ -305,3 +314,166 @@ def test_update_task_maps_notion_failures_to_502():
 
     assert response.status_code == 502
     assert "Notion refused to update" in response.json()["detail"]
+
+
+def _minimal_fetchers():
+    def fetch_events(day):
+        return []
+
+    def fetch_tasks(day):
+        return []
+
+    def update(task_id, update, done):
+        return True
+
+    return fetch_events, fetch_tasks, update
+
+
+def _finance_review(month):
+    return FinanceReview(
+        month=month,
+        accounts=[AccountBalance(name="Checking", balance=12345.0, type="checking")],
+        categories=[
+            CategoryComparison(
+                label="personal fixed spending",
+                forecast=2100.0,
+                actual=2400.0,
+                difference=-300.0,
+            )
+        ],
+        total_forecast=2100.0,
+        total_actual=2400.0,
+        total_difference=-300.0,
+    )
+
+
+def test_finance_returns_review_for_requested_month():
+    fetch_events, fetch_tasks, update = _minimal_fetchers()
+    calls = []
+
+    def get_finance(month):
+        calls.append(month)
+        return _finance_review(month)
+
+    client = TestClient(
+        create_app(fetch_events, fetch_tasks, update, get_finance=get_finance)
+    )
+
+    response = client.get("/finance", params={"month": "2026-09-01"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["month"] == "2026-09-01"
+    assert payload["accounts"][0]["name"] == "Checking"
+    assert payload["categories"][0]["difference"] == -300.0
+    assert calls == ["2026-09-01"]
+
+
+def test_finance_defaults_to_current_month():
+    fetch_events, fetch_tasks, update = _minimal_fetchers()
+    calls = []
+
+    def get_finance(month):
+        calls.append(month)
+        return _finance_review(month)
+
+    client = TestClient(
+        create_app(fetch_events, fetch_tasks, update, get_finance=get_finance)
+    )
+
+    response = client.get("/finance")
+
+    assert response.status_code == 200
+    assert calls == [date.today().replace(day=1).isoformat()]
+
+
+def test_finance_normalizes_month_to_first_day():
+    fetch_events, fetch_tasks, update = _minimal_fetchers()
+    calls = []
+
+    def get_finance(month):
+        calls.append(month)
+        return _finance_review(month)
+
+    client = TestClient(
+        create_app(fetch_events, fetch_tasks, update, get_finance=get_finance)
+    )
+
+    response = client.get("/finance", params={"month": "2026-09-17"})
+
+    assert response.status_code == 200
+    assert calls == ["2026-09-01"]
+
+
+def test_finance_rejects_invalid_month():
+    fetch_events, fetch_tasks, update = _minimal_fetchers()
+
+    client = TestClient(
+        create_app(fetch_events, fetch_tasks, update, get_finance=_finance_review)
+    )
+
+    response = client.get("/finance", params={"month": "september-2026"})
+
+    assert response.status_code == 422
+
+
+def test_finance_reports_ynab_failure():
+    fetch_events, fetch_tasks, update = _minimal_fetchers()
+
+    def get_finance(month):
+        raise YnabError("YNAB request failed: 401 Client Error")
+
+    client = TestClient(
+        create_app(fetch_events, fetch_tasks, update, get_finance=get_finance)
+    )
+
+    response = client.get("/finance", params={"month": "2026-09-01"})
+
+    assert response.status_code == 502
+    assert "YNAB is unavailable" in response.json()["detail"]
+
+
+def test_finance_reports_sheets_failure():
+    fetch_events, fetch_tasks, update = _minimal_fetchers()
+
+    def get_finance(month):
+        raise SheetsError("Google Sheets request failed: 403")
+
+    client = TestClient(
+        create_app(fetch_events, fetch_tasks, update, get_finance=get_finance)
+    )
+
+    response = client.get("/finance", params={"month": "2026-09-01"})
+
+    assert response.status_code == 502
+    assert "Google Sheets is unavailable" in response.json()["detail"]
+
+
+def test_finance_reports_mapping_problems():
+    fetch_events, fetch_tasks, update = _minimal_fetchers()
+
+    def get_finance(month):
+        raise InvalidCategoryMappingError(
+            MappingProblems(unmapped_active=["Credit Card Payments: -8125.55 NOK"])
+        )
+
+    client = TestClient(
+        create_app(fetch_events, fetch_tasks, update, get_finance=get_finance)
+    )
+
+    response = client.get("/finance", params={"month": "2026-09-01"})
+
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert "mapping needs attention" in detail
+    assert "Credit Card Payments" in detail
+
+
+def test_finance_route_absent_without_callable():
+    fetch_events, fetch_tasks, update = _minimal_fetchers()
+
+    client = TestClient(create_app(fetch_events, fetch_tasks, update))
+
+    response = client.get("/finance")
+
+    assert response.status_code == 404

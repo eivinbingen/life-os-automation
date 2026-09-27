@@ -1,9 +1,9 @@
 import { connection } from "next/server";
-import Link from "next/link";
 
 import type { Today } from "./actions";
 import { Dashboard } from "./dashboard";
 import { formatDay, getLocalDay, isValidDay } from "./date-utils";
+import { WorkspaceSidebar } from "./sidebar";
 
 export default async function Home({ searchParams }: PageProps<"/">) {
   await connection();
@@ -30,34 +30,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar" aria-label="Workspace">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">L</span>
-          <span className="brand-name">life<span>os</span></span>
-        </div>
-        <div className="sidebar-middle">
-          <span className="sidebar-label">WORKSPACE</span>
-          <div className="nav-current" aria-current="page">
-            <span className="nav-icon" aria-hidden="true">◈</span>
-            Today
-          </div>
-          <Link className="nav-link" href="/weekly">
-            <span className="nav-icon" aria-hidden="true">▦</span>
-            Weekly overview
-          </Link>
-          <Link className="nav-link" href="/review/weekly">
-            <span className="nav-icon" aria-hidden="true">◉</span>
-            Weekly Review
-          </Link>
-        </div>
-        <div className="sidebar-footer">
-          <span className="local-dot" aria-hidden="true" />
-          <div>
-            <strong>Local workspace</strong>
-            <span>Notion connected</span>
-          </div>
-        </div>
-      </aside>
+      <WorkspaceSidebar current="today" />
 
       <main className="dashboard">
         <header className="topbar">

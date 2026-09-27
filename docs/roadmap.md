@@ -49,12 +49,22 @@ discovery concludes.
   accepted transitional screen. Reuse its adapters/service/UI for V2; its temporary
   `/weekly` route and overdue panel do not complete the revised #9 Ahead slice.
 - Studies: active courses and upcoming academic work (#10).
-- Finance: the monthly forecast-versus-actual review in the web app (#11).
 
 These are the next agreed milestones after Today v2. Their relative delivery order
 remains undecided. Weekly Review V2 planning precedes parallel implementation;
 start with #26 and settle shared date/history contracts and #8/#15-dependent
 write mappings before assigning independent implementation slices.
+
+## Completed: Finance v1
+
+The monthly forecast-versus-actual review moved into the web app (#11). The
+`/finance` page reviews the current month or a selected month: YNAB account
+balances, per-category forecast versus actual, and totals with under/over/on-
+budget differences that read without color. Source failures name the unavailable
+integration instead of showing partial values. The calculation lives in a
+reusable domain service shared with the command-line review, which continues to
+work unchanged, and the YNAB category mapping gained the previously unmapped
+credit card payment category.
 
 ## Later direction
 

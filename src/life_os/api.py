@@ -6,6 +6,12 @@ from pydantic import BaseModel, field_validator, model_validator
 from requests import HTTPError, RequestException
 
 from life_os.models.calendar import CalendarEvent
+from life_os.models.finance import (
+    FinanceReview,
+    InvalidCategoryMappingError,
+    SheetsError,
+    YnabError,
+)
 from life_os.models.notion import (
     UNSET,
     Task,
@@ -16,6 +22,7 @@ from life_os.models.notion import (
     TaskUpdate as DomainTaskUpdate,
 )
 from life_os.models.weekly_review import WeeklyReview as DomainWeeklyReview
+from life_os.services.finance import format_mapping_problems
 from life_os.services.today import get_today
 from life_os.services.week import get_week
 from life_os.services.weekly_reviews import (
@@ -131,6 +138,19 @@ def _notion_write_error(error: HTTPError, action: str) -> HTTPException:
     return HTTPException(status_code=502, detail=f"Notion could not {action} the task. Try again.")
 
 
+def _finance_month(month: str | None) -> date:
+    """Normalize the month query parameter to a first-of-month date."""
+    if month is None:
+        return date.today().replace(day=1)
+    try:
+        return date.fromisoformat(month).replace(day=1)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=422,
+            detail="Month must be an ISO date within the requested month, e.g. 2026-09-01",
+        ) from error
+
+
 def create_app(
     fetch_events: Callable[[date], list[CalendarEvent]],
     fetch_tasks: Callable[[date], TaskFetchResult],
@@ -138,6 +158,7 @@ def create_app(
     create_task: Callable[[TaskCreate], Task] | None = None,
     fetch_week_events: Callable[[date, date], list[CalendarEvent]] | None = None,
     fetch_week_tasks: Callable[[date, date], TaskFetchResult] | None = None,
+    get_finance: Callable[[str], FinanceReview] | None = None,
     reviews: WeeklyReviewRepository | None = None,
 ) -> FastAPI:
 
@@ -221,6 +242,33 @@ def create_app(
             return get_week(
                 day or date.today(), fetch_week_events, fetch_week_tasks
             )
+
+    if get_finance is not None:
+
+        @app.get("/finance")
+        def finance(month: str | None = None) -> FinanceReview:
+            selected_month = _finance_month(month)
+            try:
+                return get_finance(selected_month.isoformat())
+            except InvalidCategoryMappingError as error:
+                raise HTTPException(
+                    status_code=502,
+                    detail="The YNAB category mapping needs attention:\n"
+                    + format_mapping_problems(error.problems),
+                ) from error
+            except YnabError as error:
+                raise HTTPException(
+                    status_code=502, detail=f"YNAB is unavailable: {error}"
+                ) from error
+            except SheetsError as error:
+                raise HTTPException(
+                    status_code=502, detail=f"Google Sheets is unavailable: {error}"
+                ) from error
+            except ValueError as error:
+                # Sheet structure problems from the forecast reader.
+                raise HTTPException(
+                    status_code=502, detail=f"The forecast sheet could not be read: {error}"
+                ) from error
 
     @app.patch("/tasks/{task_id}")
     def update_task_endpoint(task_id: str, update: TaskUpdate) -> dict:
