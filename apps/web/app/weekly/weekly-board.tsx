@@ -119,7 +119,6 @@ export function WeeklyBoard({ week, localDay }: { week: Week; localDay: string }
         <div className="date-navigation">
           <DayControls
             selectedDay={week.start}
-            currentDay={currentWeekStart}
             basePath="/weekly"
             stepDays={7}
             label="Choose a week"

@@ -17,6 +17,7 @@ import {
   APP_TIME_ZONE,
   dayHeading,
   formatDay,
+  shiftDay,
 } from "./date-utils";
 import { TaskCapture } from "./task-capture";
 import { TaskCheckbox } from "./task-checkbox";
@@ -32,7 +33,7 @@ const CACHE_TTL_MS = 30_000;
 
 type DashboardOperations = {
   refresh: () => Promise<void>;
-  selectDay: (day: string) => void;
+  selectDay: (target: "previous" | "current" | "next") => void;
   isRefreshing: boolean;
   capturePending: boolean;
   setCapturePending: (pending: boolean) => void;
@@ -439,8 +440,17 @@ export function Dashboard({
   );
 
   const selectDay = useCallback(
-    (day: string) => {
-      if (day === selectedDayRef.current) return;
+    (target: "previous" | "current" | "next") => {
+      // Resolve from the ref at click time: a second click before React
+      // re-renders still steps from the day actually selected.
+      const current = selectedDayRef.current;
+      const day =
+        target === "previous"
+          ? shiftDay(current, -1)
+          : target === "next"
+            ? shiftDay(current, 1)
+            : localDay;
+      if (day === current) return;
 
       // Native pushState integrates with the Next router: the URL reflects
       // the day without a server round trip or a remount (Next 16 docs,
@@ -448,7 +458,7 @@ export function Dashboard({
       window.history.pushState({ day }, "", `/?day=${day}`);
       adoptDay(day);
     },
-    [adoptDay],
+    [adoptDay, localDay],
   );
 
   // Browser back/forward moves through the entries created by selectDay;
@@ -495,7 +505,6 @@ export function Dashboard({
           <div className="date-navigation">
             <DayControls
               selectedDay={selectedDay}
-              currentDay={localDay}
               basePath="/"
               stepDays={1}
               label="Choose a day"

@@ -212,7 +212,11 @@ describe("Day navigation", () => {
     await user.click(screen.getByRole("link", { name: /Previous day/ }));
     await user.click(screen.getByRole("link", { name: /Next day/ }));
 
-    expect(screen.getByRole("heading", { name: "Yesterday." })).toBeTruthy();
+    // waitFor: React may flush the last click's re-render in a later
+    // microtask than the click's await resolves.
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Yesterday." })).toBeTruthy();
+    });
     expect(window.location.search).toBe("?day=2026-09-19");
 
     // Two distinct days fetched: 09-19 and 09-18. Returning to 09-19 is
