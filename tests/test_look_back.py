@@ -167,11 +167,22 @@ def test_empty_week_with_ok_sources_is_zero_not_unavailable():
 
 
 def test_projects_touched_merges_completed_and_unfinished_evidence():
+    def named_task(task_id: str, project_id: str, name: str) -> Task:
+        return Task(
+            id=task_id,
+            name=f"Task {task_id}",
+            done=False,
+            scheduled=date(2026, 9, 16),
+            due=None,
+            project_id=project_id,
+            project_name=name,
+        )
+
     summary = build_look_back(
         WEEK_START,
         WEEK_END,
-        [task("u", scheduled=date(2026, 9, 16), project_name="Alpha")],
-        [task("c", scheduled=date(2026, 9, 17), done=True, project_name="Beta")],
+        [named_task("u", "project-a", "Alpha")],
+        [named_task("c", "project-b", "Beta")],
         [],
         [IntegrationStatus(name="Notion", ok=True)],
     )
@@ -181,6 +192,36 @@ def test_projects_touched_merges_completed_and_unfinished_evidence():
     assert by_key["projects_touched"].count == 2
     assert by_key["projects_touched"].total is None
     assert by_key["projects_touched"].definition.startswith("Distinct projects")
+
+
+def test_projects_touched_dedupes_by_relation_id_not_name():
+    # Two distinct projects sharing a display name stay distinct; a related
+    # project with a failed name lookup (name None) is still counted.
+    def named_task(task_id: str, project_id: str, name: str | None) -> Task:
+        return Task(
+            id=task_id,
+            name=f"Task {task_id}",
+            done=False,
+            scheduled=date(2026, 9, 16),
+            due=None,
+            project_id=project_id,
+            project_name=name,
+        )
+
+    summary = build_look_back(
+        WEEK_START,
+        WEEK_END,
+        [
+            named_task("u1", "project-a", "Alpha"),
+            named_task("u2", "project-b", "Alpha"),
+            named_task("u3", "project-c", None),
+        ],
+        [],
+        [],
+        [IntegrationStatus(name="Notion", ok=True)],
+    )
+    by_key = {m.key: m for m in summary.metrics}
+    assert by_key["projects_touched"].count == 3
 
 
 def test_completed_tasks_and_unfinished_entries_carry_id_name_project():

@@ -113,9 +113,11 @@ function ReviewSection({
 function LookBackBody({
   savedSummary,
   live,
+  onRetry,
 }: {
   savedSummary: LookBackSummary | null;
   live: { ok: true; summary: LookBackSummary } | { ok: false; error: string } | null;
+  onRetry: () => void;
 }) {
   // A completed review renders its fixed saved summary; live data only
   // applies to drafts.
@@ -135,6 +137,9 @@ function LookBackBody({
       <div className="integration-alert" role="alert">
         <span className="alert-symbol" aria-hidden="true">!</span>
         <span>{live.error}</span>
+        <button type="button" className="review-retry" onClick={onRetry}>
+          Try again
+        </button>
       </div>
     );
   }
@@ -225,7 +230,9 @@ function EventBars({ count, available }: { count: number | null; available: bool
 function MetricStat({ metric }: { metric: { key: string; label: string; definition: string; available: boolean; count: number | null; total?: number | null } }) {
   const ratio =
     metric.available && metric.count !== null && metric.total ? metric.count / metric.total : 0;
-  const hasWhole = metric.available && metric.total !== null && metric.total !== undefined;
+  // hasWhole does not require available: an unavailable whole metric renders
+  // the donut's empty dashed ring, not the tick strip's dashed line.
+  const hasWhole = metric.total !== null && metric.total !== undefined;
   const countLabel =
     !metric.available || metric.count === null
       ? "N/A"
@@ -346,6 +353,21 @@ export function ReviewBoard({
   }>({});
 
   const isCompleted = review.status === "completed";
+
+  // The look-back summary is fetched server-side; a client retry re-runs the
+  // same server action so a transient failure is recoverable in place.
+  const [liveLookBack, setLiveLookBack] = useState(lookBack ?? null);
+  const [retryingLookBack, setRetryingLookBack] = useState(false);
+  const retryLookBack = useCallback(async () => {
+    if (isCompleted || retryingLookBack) return;
+    setRetryingLookBack(true);
+    try {
+      const { fetchLookBack } = await import("./review-actions");
+      setLiveLookBack(await fetchLookBack(review.week_start));
+    } finally {
+      setRetryingLookBack(false);
+    }
+  }, [isCompleted, retryingLookBack, review.week_start]);
 
   const persist = useCallback(
     async (
@@ -505,7 +527,8 @@ export function ReviewBoard({
       >
         <LookBackBody
           savedSummary={review.look_back_summary}
-          live={lookBack ?? null}
+          live={liveLookBack}
+          onRetry={() => void retryLookBack()}
         />
         <p className="review-prompt">
           Record what mattered this week in your own words; your manual wins are saved

@@ -87,10 +87,11 @@ const completed: ReviewRecord = {
 
 const saveReviewDraft = vi.hoisted(() => vi.fn());
 const completeReview = vi.hoisted(() => vi.fn());
+const fetchLookBackAction = vi.hoisted(() => vi.fn());
 
 vi.mock("./review-actions", async () => {
   const actual = await vi.importActual<typeof import("./review-actions")>("./review-actions");
-  return { ...actual, saveReviewDraft, completeReview };
+  return { ...actual, saveReviewDraft, completeReview, fetchLookBack: fetchLookBackAction };
 });
 
 function renderBoard() {
@@ -292,7 +293,8 @@ describe("Look Back summary", () => {
     expect(unfinishedList?.textContent).toContain("Old task");
   });
 
-  it("shows an unavailable state with retry when the live fetch fails", () => {
+  it("shows an unavailable state with retry when the live fetch fails", async () => {
+    fetchLookBackAction.mockResolvedValue({ ok: true, summary });
     render(
       <ReviewBoard
         initialReview={draft}
@@ -303,6 +305,12 @@ describe("Look Back summary", () => {
     openLookBack();
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("could not be loaded");
+    const retry = screen.getByRole("button", { name: "Try again" });
+    await userEvent.setup().click(retry);
+    await waitFor(() => {
+      expect(fetchLookBackAction).toHaveBeenCalledWith("2026-09-14");
+      expect(screen.getByText(/Tasks done/)).toBeTruthy();
+    });
   });
 
   it("shows zero counts as empty, distinct from unavailable", () => {
@@ -340,7 +348,7 @@ describe("Look Back summary", () => {
           summary: {
             ...summary,
             metrics: [
-              { ...summary.metrics[0], available: false, count: null, total: null },
+              { ...summary.metrics[0], available: false, count: null },
               ...summary.metrics.slice(1),
             ],
           },
@@ -349,6 +357,9 @@ describe("Look Back summary", () => {
     );
     openLookBack();
     expect(screen.getByText("N/A")).toBeTruthy();
+    // The whole metric keeps its donut shape (dashed ring), not a tick strip.
+    const section = screen.getByRole("heading", { name: /Look Back/ }).closest("section");
+    expect(section?.querySelectorAll(".review-donut").length).toBe(3);
   });
 
   it("shows partial fetch warnings when a source failed", () => {

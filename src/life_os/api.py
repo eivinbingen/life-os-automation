@@ -247,19 +247,21 @@ def create_app(
         ) -> DomainWeeklyReview:
             # Capture the Look Back summary server-side before the mutation;
             # a fetch failure passes None so a missing metric never blocks
-            # completion. Idempotent retries return the stored record without
-            # recomputing, so the saved summary stays fixed.
+            # completion. A lost-response retry must not spend the live reads
+            # on a summary the repository would discard, so skip capture when
+            # the record is already completed; reviews.complete performs the
+            # authoritative idempotency/conflict check either way.
             look_back_summary: dict | None = None
             if (
                 fetch_week_tasks is not None
                 and fetch_done_week_tasks is not None
                 and fetch_week_events is not None
+                and reviews.get(review_id).status != "completed"
             ):
                 try:
-                    stored = reviews.get(review_id)
                     summary = get_look_back(
-                        stored.week_start,
-                        stored.week_end,
+                        reviews.get(review_id).week_start,
+                        reviews.get(review_id).week_end,
                         fetch_week_tasks,
                         fetch_done_week_tasks,
                         fetch_week_events,

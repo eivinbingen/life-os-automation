@@ -61,13 +61,15 @@ def build_look_back(
     # unions both fetches to get the real denominator.
     scheduled_total = len(set(scheduled_incomplete) | set(completed))
 
-    completed_names = sorted(
-        {t.project_name for t in completed.values() if t.project_name}
-    )
-    unfinished_names = sorted(
-        {t.project_name for t in unfinished.values() if t.project_name}
-    )
-    projects_touched = sorted(set(completed_names) | set(unfinished_names))
+    # Dedupe by the stable Project relation id; the name is display-only and
+    # may be missing (failed lookup) or shared by distinct projects.
+    completed_projects = {
+        t.project_id: t.project_name for t in completed.values() if t.project_id
+    }
+    unfinished_projects = {
+        t.project_id: t.project_name for t in unfinished.values() if t.project_id
+    }
+    projects_touched_count = len(completed_projects | unfinished_projects)
 
     metrics = [
         LookBackMetric(
@@ -95,14 +97,14 @@ def build_look_back(
             key="projects_touched",
             label="Projects worked on",
             definition=(
-                "Distinct projects with tasks scheduled in the reviewed week. "
-                "Evidence is the Project relation of the fetched tasks; no other "
-                "project activity is tracked. Projects completed or dropped "
-                "during the week are included, so this has no reliable total "
-                "to be a share of."
+                "Distinct projects (by Project relation) with tasks scheduled "
+                "in the reviewed week. Evidence is the Project relation of the "
+                "fetched tasks; no other project activity is tracked. Projects "
+                "completed or dropped during the week are included, so this "
+                "has no reliable total to be a share of."
             ),
             available=notion_ok,
-            count=len(projects_touched) if notion_ok else None,
+            count=projects_touched_count if notion_ok else None,
             total=None,
         ),
     ]
