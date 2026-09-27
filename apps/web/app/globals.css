@@ -292,3 +292,27 @@ body { margin: 0; min-height: 100vh; background: var(--paper); color: var(--ink)
 }
 
 .weekly-retry-link { display: inline-flex; align-items: center; justify-content: center; padding: 0 16px; margin-top: 20px; text-decoration: none; }
+
+/* Finance review */
+.finance-accounts { display: grid; margin: 0; padding: 6px 29px 20px; list-style: none; }
+.finance-account { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: baseline; gap: 16px; padding: 13px 0; border-bottom: 1px dashed #eaf0eb; }
+.finance-account:last-child { border-bottom: 0; }
+.finance-account-name { color: var(--deep); font-size: 14px; font-weight: 700; }
+.finance-account-balance { font-size: 14px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.finance-balance-negative { color: #b3563f; }
+.finance-account-type { color: #93a198; font-size: 11px; text-transform: capitalize; }
+
+.finance-table-wrap { overflow-x: auto; }
+.finance-table { width: 100%; border-collapse: collapse; }
+.finance-table thead th { padding: 14px 29px 10px; text-align: right; color: #789085; font-size: 10px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; border-bottom: 1px solid #eaf0eb; white-space: nowrap; }
+.finance-table thead th:first-child { text-align: left; }
+.finance-table tbody th[scope="row"] { padding: 13px 29px; text-align: left; color: var(--deep); font-size: 14px; font-weight: 700; border-bottom: 1px solid #eef3ef; }
+.finance-table tbody td { padding: 13px 29px; text-align: right; color: #43534a; font-size: 14px; font-variant-numeric: tabular-nums; border-bottom: 1px solid #eef3ef; white-space: nowrap; }
+.finance-table tfoot th, .finance-table tfoot td { border-top: 2px solid #e1e9e2; border-bottom: 0; color: var(--deep); font-weight: 750; }
+
+.finance-diff { display: inline-flex; align-items: center; justify-content: flex-end; gap: 7px; font-weight: 750; white-space: nowrap; }
+.finance-diff-glyph { font-size: 10px; }
+.finance-diff-label { color: #93a198; font-size: 11px; }
+.finance-diff-under { color: var(--green); }
+.finance-diff-over { color: #b3563f; }
+.finance-diff-zero { color: #789085; }

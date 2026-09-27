@@ -47,12 +47,38 @@ export type Week = {
   statuses: IntegrationStatus[];
 };
 
+export type FinanceAccount = {
+  name: string;
+  balance: number;
+  type: string;
+};
+
+export type FinanceCategory = {
+  label: string;
+  forecast: number;
+  actual: number;
+  difference: number;
+};
+
+export type FinanceReview = {
+  month: string;
+  accounts: FinanceAccount[];
+  categories: FinanceCategory[];
+  total_forecast: number;
+  total_actual: number;
+  total_difference: number;
+};
+
 export type RefreshResult =
   | { ok: true; today: Today }
   | { ok: false; error: string };
 
 export type RefreshWeekResult =
   | { ok: true; week: Week }
+  | { ok: false; error: string };
+
+export type RefreshFinanceResult =
+  | { ok: true; review: FinanceReview }
   | { ok: false; error: string };
 
 export type CreateTaskResult =
@@ -229,4 +255,49 @@ export async function updateTaskDone(taskId: string, done: boolean) {
     throw new Error(result.error);
   }
   return { ok: true };
+}
+
+export async function refreshFinance(month: string): Promise<RefreshFinanceResult> {
+  const apiUrl = process.env.LIFE_OS_API_URL;
+  if (!apiUrl) {
+    return { ok: false, error: "The connection to the local Life OS service is not configured." };
+  }
+
+  // A finance read queries YNAB and Google Sheets; like the weekly read, it
+  // can exceed Today's three-second refresh budget.
+  const signal = AbortSignal.timeout(30_000);
+  let response: Response;
+  try {
+    response = await fetch(`${apiUrl}/finance?month=${encodeURIComponent(month)}`, {
+      cache: "no-store",
+      signal,
+    });
+  } catch {
+    return {
+      ok: false,
+      error: signal.aborted
+        ? "Loading the finance review took too long. YNAB or Google Sheets may be slow; please try again."
+        : "The local Life OS service could not be reached. Check that it is running, then try again.",
+    };
+  }
+  if (!response.ok) {
+    // The API's failure detail already names the unavailable source; surface
+    // it instead of hiding the cause behind a generic message.
+    let error = "The Life OS service could not load this month's review. Please try again.";
+    try {
+      const payload = (await response.json()) as { detail?: unknown };
+      if (typeof payload.detail === "string") error = payload.detail;
+    } catch {
+      // Keep the safe fallback when the local API did not return JSON.
+    }
+    return { ok: false, error };
+  }
+  try {
+    return { ok: true, review: (await response.json()) as FinanceReview };
+  } catch {
+    return {
+      ok: false,
+      error: "The Life OS service returned an unreadable response. Please try again.",
+    };
+  }
 }
