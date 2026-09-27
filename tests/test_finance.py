@@ -40,6 +40,9 @@ def make_categories():
         "3f644c83-dad6-45f8-ac09-80c408fa0b08": ynab_category("Flights", "Travel", -800.0),
         "9b86b840-d4dd-4b33-971a-7b06b2ce6942": ynab_category("Hotels", "Travel", -400.0),
         "83659eec-e08e-4550-9a60-22d560fce803": ynab_category("Gifts", "Travel", -150.0),
+        "9bb0b250-2853-48de-ab57-3123eca5cc45": ynab_category(
+            "Eivin kredittkort", "Credit Card Payments", -250.0
+        ),
         # Excluded categories, present in YNAB but not part of the review.
         "7af38ec2-d0a6-4369-82a7-000851be9a73": ynab_category("Uncategorized", "Other", 0.0),
         "495715b7-6666-4877-b908-02d44bbcb8cb": ynab_category("Inflow", "Other", 0.0),
@@ -267,9 +270,9 @@ class TestBuildFinanceReview:
 
         assert review.month == "2026-09-01"
         assert [account.name for account in review.accounts] == ["Checking"]
-        assert review.total_actual == 6600.0
+        assert review.total_actual == 6850.0
         assert review.total_forecast == 4100.0
-        assert review.total_difference == 4100.0 - 6600.0
+        assert review.total_difference == 4100.0 - 6850.0
         assert [c.label for c in review.categories] == list(CATEGORY_MAPPINGS)
 
     def test_total_difference_matches_sum_of_categories(self):
@@ -298,7 +301,7 @@ class TestGetFinanceReview:
         )
 
         assert review.month == "2026-09-01"
-        assert review.total_actual == 6600.0
+        assert review.total_actual == 6850.0
 
     def test_raises_on_mapping_problems(self):
         def fetch_data(month):
