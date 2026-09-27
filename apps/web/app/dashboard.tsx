@@ -12,11 +12,11 @@ import {
 
 import type { RefreshResult, Task, Today } from "./actions";
 import { refreshToday } from "./actions";
+import { DayControls } from "./day-controls";
 import {
   APP_TIME_ZONE,
   dayHeading,
   formatDay,
-  shiftDay,
 } from "./date-utils";
 import { TaskCapture } from "./task-capture";
 import { TaskCheckbox } from "./task-checkbox";
@@ -255,8 +255,6 @@ export function Dashboard({
   // Refresh landing after a newer navigation load cannot either.
   const dayRequestEpochRef = useRef<Map<string, number>>(new Map());
 
-  const previousDay = shiftDay(selectedDay, -1);
-  const nextDay = shiftDay(selectedDay, 1);
   const heading = dayHeading(selectedDay, localDay);
   const isCurrentDay = selectedDay === localDay;
 
@@ -495,23 +493,16 @@ export function Dashboard({
             <p className="intro-copy">A clear view of your time and what needs your attention.</p>
           </div>
           <div className="date-navigation">
-            <div className="day-controls" aria-label="Choose a day">
-              <button
-                type="button"
-                aria-label={`Previous day, ${formatDay(previousDay)}`}
-                onClick={() => selectDay(previousDay)}
-              >&larr;</button>
-              <button
-                type="button"
-                className="today-link"
-                onClick={() => selectDay(localDay)}
-              >Today</button>
-              <button
-                type="button"
-                aria-label={`Next day, ${formatDay(nextDay)}`}
-                onClick={() => selectDay(nextDay)}
-              >&rarr;</button>
-            </div>
+            <DayControls
+              selectedDay={selectedDay}
+              currentDay={localDay}
+              basePath="/"
+              stepDays={1}
+              label="Choose a day"
+              currentLabel="Today"
+              currentHref="/"
+              onSelect={selectDay}
+            />
             {/* Keyed by the selected day: switching days closes the capture
                 popover so it cannot submit against the wrong day. */}
             <TaskCapture key={selectedDay} selectedDay={selectedDay} />
