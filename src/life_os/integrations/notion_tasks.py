@@ -79,6 +79,8 @@ def _task_from_page(notion_page: dict) -> Task:
     due_str = due_value["start"] if due_value else None
     relations = props["Project"]["relation"]
     project_id = relations[0]["id"] if relations else None
+    course_relations = props.get("Course", {}).get("relation", [])
+    course_id = course_relations[0]["id"] if course_relations else None
 
     if scheduled_str is None:
         scheduled = None
@@ -94,7 +96,15 @@ def _task_from_page(notion_page: dict) -> Task:
     else:
         due = date.fromisoformat(due_str)
 
-    return Task(id=id, name=name, done=done, scheduled=scheduled, due=due, project_id=project_id)
+    return Task(
+        id=id,
+        name=name,
+        done=done,
+        scheduled=scheduled,
+        due=due,
+        project_id=project_id,
+        course_id=course_id,
+    )
 
 
 def fetch_tasks_for_range(

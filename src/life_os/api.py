@@ -6,6 +6,12 @@ from pydantic import BaseModel, field_validator, model_validator
 from requests import HTTPError, RequestException
 
 from life_os.models.calendar import CalendarEvent
+from life_os.models.courses import (
+    CourseScheduleItem as DomainCourseScheduleItem,
+)
+from life_os.models.courses import (
+    StudiesOverview as DomainStudiesOverview,
+)
 from life_os.models.finance import (
     FinanceReview,
     InvalidCategoryMappingError,
@@ -141,6 +147,60 @@ def _notion_write_error(error: HTTPError, action: str) -> HTTPException:
     return HTTPException(status_code=502, detail=f"Notion could not {action} the task. Try again.")
 
 
+class ScheduleItemResponse(BaseModel):
+    id: str
+    name: str
+    kind: str
+    course_id: str | None = None
+    course_name: str | None = None
+    due: str | None = None
+
+
+class CourseResponse(BaseModel):
+    id: str
+    name: str
+    next_item: ScheduleItemResponse | None = None
+    upcoming: list[ScheduleItemResponse] = []
+
+
+class StudiesResponse(BaseModel):
+    courses: list[CourseResponse] = []
+    upcoming: list[ScheduleItemResponse] = []
+    statuses: list[dict] = []
+    warnings: list[str] = []
+
+
+def _studies_schedule_item(item: DomainCourseScheduleItem) -> ScheduleItemResponse:
+    due = None
+    if item.due is not None:
+        due = item.due.isoformat() if isinstance(item.due, date) else item.due.isoformat()
+    return ScheduleItemResponse(
+        id=item.id,
+        name=item.name,
+        kind=item.kind,
+        course_id=item.course_id,
+        course_name=item.course_name,
+        due=due,
+    )
+
+
+def _studies_response(overview: DomainStudiesOverview) -> StudiesResponse:
+    return StudiesResponse(
+        courses=[
+            CourseResponse(
+                id=course.id,
+                name=course.name,
+                next_item=_studies_schedule_item(course.next_item) if course.next_item else None,
+                upcoming=[_studies_schedule_item(i) for i in course.upcoming],
+            )
+            for course in overview.courses
+        ],
+        upcoming=[_studies_schedule_item(i) for i in overview.upcoming],
+        statuses=[{"name": s.name, "ok": s.ok, "error": s.error} for s in overview.statuses],
+        warnings=overview.warnings,
+    )
+
+
 def _finance_month(month: str | None) -> date:
     """Normalize the month query parameter to a first-of-month date."""
     if month is None:
@@ -163,6 +223,7 @@ def create_app(
     fetch_week_tasks: Callable[[date, date], TaskFetchResult] | None = None,
     fetch_done_week_tasks: Callable[[date, date], TaskFetchResult] | None = None,
     get_finance: Callable[[str], FinanceReview] | None = None,
+    fetch_studies: Callable[[], DomainStudiesOverview] | None = None,
     reviews: WeeklyReviewRepository | None = None,
 ) -> FastAPI:
 
@@ -325,6 +386,20 @@ def create_app(
                 raise HTTPException(
                     status_code=502, detail=f"The forecast sheet could not be read: {error}"
                 ) from error
+
+    if fetch_studies is not None:
+
+        @app.get("/studies")
+        def studies_endpoint() -> StudiesResponse:
+            try:
+                overview = fetch_studies()
+            except (HTTPError, RequestException) as error:
+                return StudiesResponse(
+                    courses=[],
+                    upcoming=[],
+                    statuses=[{"name": "Notion", "ok": False, "error": str(error)}],
+                )
+            return _studies_response(overview)
 
     @app.patch("/tasks/{task_id}")
     def update_task_endpoint(task_id: str, update: TaskUpdate) -> dict:

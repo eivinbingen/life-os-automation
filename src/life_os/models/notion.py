@@ -21,6 +21,7 @@ class Task:
     due: date | datetime | None = None
     project_id: str | None = None
     project_name: str | None = None
+    course_id: str | None = None
 
 
 @dataclass

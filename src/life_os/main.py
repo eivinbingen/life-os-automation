@@ -1,4 +1,5 @@
 import os
+from datetime import date
 from functools import partial
 
 import uvicorn
@@ -12,6 +13,7 @@ from life_os.integrations.google_calendar import (
     get_events_for_day,
     get_events_for_range,
 )
+from life_os.integrations.notion_courses import fetch_studies_overview
 from life_os.integrations.notion_tasks import (
     create_task,
     fetch_done_tasks_for_range,
@@ -62,6 +64,17 @@ def main():
         excluded_categories=EXCLUDED_CATEGORIES,
     )
 
+    courses_data_source_id = os.getenv("NOTION_COURSES_DATA_SOURCE_ID")
+
+    def fetch_studies():
+        return fetch_studies_overview(
+            token,
+            courses_data_source_id,
+            data_source_id,
+            today=date.today(),
+            page_size=100,
+        )
+
     # The review store resolves from the repository root regardless of the
     # launch working directory.
     os.environ.setdefault(STORE_ENV_VAR, str(_repository_root()))
@@ -76,6 +89,7 @@ def main():
         fetch_week_tasks,
         fetch_done_week_tasks,
         get_finance=get_finance,
+        fetch_studies=fetch_studies,
         reviews=reviews,
     )
     uvicorn.run(app, host="127.0.0.1", port=8000)

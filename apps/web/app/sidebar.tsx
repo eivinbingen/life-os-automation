@@ -1,12 +1,13 @@
 import Link from "next/link";
 
-type WorkspacePage = "today" | "weekly" | "review" | "finance";
+type WorkspacePage = "today" | "weekly" | "review" | "finance" | "studies";
 
 const NAV_ITEMS: { key: WorkspacePage; href: string; icon: string; label: string }[] = [
   { key: "today", href: "/", icon: "◈", label: "Today" },
   { key: "weekly", href: "/weekly", icon: "▦", label: "Weekly overview" },
   { key: "review", href: "/review/weekly", icon: "◉", label: "Weekly Review" },
   { key: "finance", href: "/finance", icon: "◎", label: "Finance" },
+  { key: "studies", href: "/studies", icon: "✦", label: "Studies" },
 ];
 
 const FOOTER_NOTES: Record<WorkspacePage, string> = {
@@ -14,6 +15,7 @@ const FOOTER_NOTES: Record<WorkspacePage, string> = {
   weekly: "Read-only weekly overview",
   review: "Guided weekly recalibration",
   finance: "Read-only finance review",
+  studies: "Read-only studies overview",
 };
 
 /** Shared workspace navigation; the current page renders as a non-link. */

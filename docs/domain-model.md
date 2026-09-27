@@ -24,6 +24,10 @@ Courses can contain:
 
 A course belongs to the Studies area but does not replace goals or projects.
 
+The read-only `/studies` overview reads active courses and upcoming work
+directly from Notion; all course properties are optional and missing
+relations never drop a course or task (see `docs/notion-courses-schema.md`).
+
 ## Inheritance
 
 Relationships should provide context automatically:
