@@ -34,6 +34,18 @@ export function startOfWeek(day: string) {
   return shiftDay(day, -back);
 }
 
+export function defaultReviewWeek(localDay: string) {
+  // The review day is Sunday by default, so the current week is the
+  // default target then; any other day targets the previous completed week.
+  const day = new Date(`${localDay}T12:00:00Z`);
+  const back = (day.getUTCDay() + 6) % 7;
+  const monday = shiftDay(localDay, -back);
+  if (day.getUTCDay() === 0) {
+    return monday;
+  }
+  return shiftDay(monday, -7);
+}
+
 export function startOfMonth(day: string) {
   return `${day.slice(0, 7)}-01`;
 }

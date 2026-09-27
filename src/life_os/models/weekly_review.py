@@ -52,6 +52,7 @@ class WeeklyReview:
     section_progress: SectionProgress = field(default_factory=SectionProgress)
     wins: str = ""
     reflection: str = ""
+    look_back_summary: dict | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -69,6 +70,7 @@ class WeeklyReview:
             "section_progress": self.section_progress.to_dict(),
             "wins": self.wins,
             "reflection": self.reflection,
+            "look_back_summary": self.look_back_summary,
         }
 
     @classmethod
@@ -95,4 +97,5 @@ class WeeklyReview:
             section_progress=SectionProgress.from_dict(section_progress),
             wins=data.get("wins", ""),
             reflection=data.get("reflection", ""),
+            look_back_summary=data.get("look_back_summary"),
         )

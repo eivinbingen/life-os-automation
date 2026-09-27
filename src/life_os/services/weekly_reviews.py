@@ -286,6 +286,7 @@ class WeeklyReviewRepository:
         wins: str | None = None,
         reflection: str | None = None,
         section_progress: dict | None = None,
+        look_back_summary: dict | None = None,
     ) -> WeeklyReview:
         """Complete a review; idempotent per operation ID.
 
@@ -320,6 +321,8 @@ class WeeklyReviewRepository:
                 review.reflection = reflection
             if section_progress is not None:
                 review.section_progress = review.section_progress.from_dict(section_progress)
+            if look_back_summary is not None:
+                review.look_back_summary = look_back_summary
             review.status = "completed"
             review.revision += 1
             now = _now()

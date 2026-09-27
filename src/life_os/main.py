@@ -14,6 +14,7 @@ from life_os.integrations.google_calendar import (
 )
 from life_os.integrations.notion_tasks import (
     create_task,
+    fetch_done_tasks_for_range,
     fetch_tasks_for_day,
     fetch_tasks_for_range,
     update_task,
@@ -44,6 +45,12 @@ def main():
         data_source_id,
         page_size=100,
     )
+    fetch_done_week_tasks = partial(
+        fetch_done_tasks_for_range,
+        token,
+        data_source_id,
+        page_size=100,
+    )
 
     update = partial(update_task, token)
     create = partial(create_task, token, data_source_id)
@@ -67,6 +74,7 @@ def main():
         create,
         fetch_week_events,
         fetch_week_tasks,
+        fetch_done_week_tasks,
         get_finance=get_finance,
         reviews=reviews,
     )

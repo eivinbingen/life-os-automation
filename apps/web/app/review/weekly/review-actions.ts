@@ -9,6 +9,26 @@ export type SectionProgress = {
   ahead: boolean;
 };
 
+export type LookBackMetric = {
+  key: string;
+  label: string;
+  definition: string;
+  available: boolean;
+  count: number | null;
+  total?: number | null;
+};
+
+export type LookBackSummary = {
+  week_start: string;
+  week_end: string;
+  timezone: string;
+  captured_at: string;
+  metrics: LookBackMetric[];
+  statuses: { name: string; ok: boolean; error: string | null }[];
+  completed_tasks: { id: string; name: string; project_name: string | null }[];
+  unfinished_tasks: { id: string; name: string; project_name: string | null }[];
+};
+
 export type ReviewRecord = {
   id: string;
   week_start: string;
@@ -24,6 +44,7 @@ export type ReviewRecord = {
   section_progress: SectionProgress;
   wins: string;
   reflection: string;
+  look_back_summary: LookBackSummary | null;
 };
 
 export type ReviewWriteResult =
@@ -164,5 +185,32 @@ export async function fetchCompletedReviews(): Promise<
     return { ok: true, reviews: reviews.filter((review) => review.status === "completed") };
   } catch {
     return { ok: false, error: "The Life OS service could not be reached. Check that it is running, then try again." };
+  }
+}
+
+export async function fetchLookBack(
+  weekStart: string,
+): Promise<{ ok: true; summary: LookBackSummary } | { ok: false; error: string }> {
+  const base = apiUrl();
+  if (!base) {
+    return { ok: false, error: "The connection to the local Life OS service is not configured." };
+  }
+  try {
+    const response = await fetch(
+      `${base}/reviews/weekly/look-back?week_start=${encodeURIComponent(weekStart)}`,
+      {
+        cache: "no-store",
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+    if (!response.ok) {
+      return { ok: false, error: "The look-back summary could not be loaded. Please try again." };
+    }
+    return { ok: true, summary: (await response.json()) as LookBackSummary };
+  } catch {
+    return {
+      ok: false,
+      error: "The Life OS service could not be reached. Check that it is running, then try again.",
+    };
   }
 }

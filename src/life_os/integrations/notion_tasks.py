@@ -10,6 +10,39 @@ NOTION_API_URL = "https://api.notion.com/v1"
 NOTION_VERSION = "2026-03-11"
 
 
+def fetch_active_projects(token: str, data_source_id: str, page_size: int) -> list[Task]:
+    """Fetch projects with the Notion-defined Active status (read-only).
+
+    Returns lightweight Task-shaped entries (id + name) reused as evidence
+    for project activity. Bounded by page_size pagination.
+    """
+
+    projects: list[Task] = {}
+    body = {
+        "filter": {"property": "Status", "status": {"equals": "Active"}},
+        "page_size": page_size,
+    }
+    while True:
+        res = requests.post(
+            url=f"{NOTION_API_URL}/data_sources/{data_source_id}/query",
+            headers=_headers(token),
+            json=body,
+        )
+        res.raise_for_status()
+        data = res.json()
+        for page in data["results"]:
+            props = page["properties"]
+            name = "".join(
+                part.get("plain_text", "") for part in props.get("Name", {}).get("title", [])
+            )
+            project = Task(id=page["id"], name=name)
+            projects.setdefault(project.id, project)
+        if not data["has_more"]:
+            break
+        body["start_cursor"] = data["next_cursor"]
+    return list(projects.values())
+
+
 def _headers(token: str) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {token}",
@@ -106,6 +139,43 @@ def fetch_tasks_for_day(
     token: str, data_source_id: str, day: date, page_size: int
 ) -> TaskFetchResult:
     return fetch_tasks_for_range(token, data_source_id, day, day, page_size)
+
+
+def fetch_done_tasks_for_range(
+    token: str, data_source_id: str, start_day: date, end_day: date, page_size: int
+) -> TaskFetchResult:
+    """Fetch done tasks with a Scheduled date inside [start_day, end_day].
+
+    A separate narrow read for the Weekly Review Look Back: completion is
+    not tracked, so "scheduled in the week and now done" is the only
+    honest completed-work measure. Bounding by Scheduled avoids querying
+    unbounded done history.
+    """
+
+    done = {"property": "Done", "checkbox": {"equals": True}}
+    scheduled = [
+        {"property": "Scheduled", "date": {"on_or_after": start_day.isoformat()}},
+        {"property": "Scheduled", "date": {"on_or_before": end_day.isoformat()}},
+    ]
+    if start_day == end_day:
+        scheduled = [{"property": "Scheduled", "date": {"equals": start_day.isoformat()}}]
+    body = {"filter": {"and": [done, *scheduled]}, "page_size": page_size}
+    tasks = {}
+    while True:
+        res = requests.post(
+            url=f"{NOTION_API_URL}/data_sources/{data_source_id}/query",
+            headers=_headers(token),
+            json=body,
+        )
+        res.raise_for_status()
+        data = res.json()
+        for page in data["results"]:
+            task = _task_from_page(page)
+            tasks.setdefault(task.id, task)
+        if not data["has_more"]:
+            break
+        body["start_cursor"] = data["next_cursor"]
+    return _resolve_project_names(token, list(tasks.values()))
 
 
 def _resolve_project_names(token: str, tasks: list[Task]) -> TaskFetchResult:

@@ -1,12 +1,59 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ReviewRecord } from "./review-actions";
+import type { LookBackSummary, ReviewRecord } from "./review-actions";
 import { ReviewBoard } from "./review-board";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
+const push = vi.hoisted(() => vi.fn());
+const refresh = vi.hoisted(() => vi.fn());
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh }) }));
+
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+const summary: LookBackSummary = {
+  week_start: "2026-09-14",
+  week_end: "2026-09-20",
+  timezone: "Europe/Zurich",
+  captured_at: "2026-09-21T09:00:00+02:00",
+  metrics: [
+    {
+      key: "tasks_scheduled_done",
+      label: "Tasks done",
+      definition:
+        "Out of tasks scheduled in the reviewed week. Completion date is not tracked.",
+      available: true,
+      count: 2,
+      total: 3,
+    },
+    {
+      key: "events_in_week",
+      label: "Calendar events",
+      definition: "Unique calendar events with a start inside the reviewed week.",
+      available: true,
+      count: 3,
+      total: null,
+    },
+    {
+      key: "projects_touched",
+      label: "Projects worked on",
+      definition: "Distinct projects with tasks scheduled in the reviewed week.",
+      available: true,
+      count: 1,
+      total: null,
+    },
+  ],
+  statuses: [
+    { name: "Notion", ok: true, error: null },
+    { name: "Calendar", ok: true, error: null },
+  ],
+  completed_tasks: [
+    { id: "c1", name: "Shipped the slice", project_name: "Life OS" },
+    { id: "c2", name: "Wrote the docs", project_name: "Life OS" },
+  ],
+  unfinished_tasks: [{ id: "u1", name: "Old task", project_name: null }],
+};
 
 const draft: ReviewRecord = {
   id: "review-1",
@@ -23,6 +70,7 @@ const draft: ReviewRecord = {
   section_progress: { look_back: false, clean_up: false, direction: false, ahead: false },
   wins: "",
   reflection: "",
+  look_back_summary: null,
 };
 
 const completed: ReviewRecord = {
@@ -39,10 +87,11 @@ const completed: ReviewRecord = {
 
 const saveReviewDraft = vi.hoisted(() => vi.fn());
 const completeReview = vi.hoisted(() => vi.fn());
+const fetchLookBackAction = vi.hoisted(() => vi.fn());
 
 vi.mock("./review-actions", async () => {
   const actual = await vi.importActual<typeof import("./review-actions")>("./review-actions");
-  return { ...actual, saveReviewDraft, completeReview };
+  return { ...actual, saveReviewDraft, completeReview, fetchLookBack: fetchLookBackAction };
 });
 
 function renderBoard() {
@@ -62,7 +111,8 @@ describe("Guided weekly review", () => {
       expect(screen.getByRole("heading", { name: new RegExp(title) })).toBeTruthy();
     }
     expect(screen.getByLabelText("Review state").textContent).toContain("Draft");
-    expect(screen.getByLabelText("Review state").textContent).toContain("27 September 2026");
+    expect(screen.getByLabelText("Review state").textContent).toContain("Reviewed 14–20 Sept 2026");
+    expect(screen.getByLabelText("Review state").textContent).toContain("Ahead 21–27 Sept 2026");
   });
 
   it("collapses and expands sections without losing entered text", async () => {
@@ -150,8 +200,24 @@ describe("Guided weekly review", () => {
   it("lists completed history read-only", () => {
     renderBoard();
     const history = screen.getByLabelText("Completed reviews").closest("section");
-    expect(history?.textContent).toContain("7 September 2026");
+    expect(history?.textContent).toContain("7–13 Sept 2026");
     expect(history?.textContent).toContain("Completed reviews");
+  });
+
+  it("cycles to the previous and next week from the header", async () => {
+    const user = userEvent.setup();
+    renderBoard();
+    await user.click(screen.getByRole("button", { name: "Previous week" }));
+    expect(push).toHaveBeenLastCalledWith("/review/weekly?week_start=2026-09-07");
+    await user.click(screen.getByRole("button", { name: "Next week" }));
+    expect(push).toHaveBeenLastCalledWith("/review/weekly?week_start=2026-09-21");
+  });
+
+  it("labels the reviewed and ahead weeks separately in the header", () => {
+    renderBoard();
+    const state = screen.getByLabelText("Review state").textContent ?? "";
+    expect(state).toContain("Reviewed");
+    expect(state).toContain("Ahead");
   });
 
   it("disables textareas once the review is completed", () => {
@@ -191,5 +257,153 @@ describe("Guided weekly review", () => {
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("could not load review history");
     expect(screen.getByText("Completed reviews")).toBeTruthy();
+  });
+});
+
+describe("Look Back summary", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function openLookBack() {
+    const section = screen.getByRole("heading", { name: /Look Back/ }).closest("section");
+    const expand = section?.querySelector(".review-collapse") as HTMLElement;
+    if (expand?.getAttribute("aria-expanded") === "false") {
+      expand.click();
+    }
+  }
+
+  it("renders the live summary with honest metric labels and inspectable lists", () => {
+    render(
+      <ReviewBoard
+        initialReview={draft}
+        history={[]}
+        lookBack={{ ok: true, summary }}
+      />,
+    );
+    openLookBack();
+    const section = screen.getByRole("heading", { name: /Look Back/ }).closest("section");
+    expect(section?.textContent).toContain("2 of 3");
+    expect(section?.textContent).toContain("Tasks done");
+    expect(section?.textContent).toContain("Projects worked on");
+    expect(section?.querySelectorAll(".review-donut").length).toBe(3);
+    const completedList = screen.getByText(/Completed work \(2\)/).closest("details");
+    expect(completedList?.textContent).toContain("Shipped the slice");
+    const unfinishedList = screen.getByText(/Unfinished work \(1\)/).closest("details");
+    expect(unfinishedList?.textContent).toContain("Old task");
+  });
+
+  it("shows an unavailable state with retry when the live fetch fails", async () => {
+    fetchLookBackAction.mockResolvedValue({ ok: true, summary });
+    render(
+      <ReviewBoard
+        initialReview={draft}
+        history={[]}
+        lookBack={{ ok: false, error: "The look-back summary could not be loaded. Please try again." }}
+      />,
+    );
+    openLookBack();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("could not be loaded");
+    const retry = screen.getByRole("button", { name: "Try again" });
+    await userEvent.setup().click(retry);
+    await waitFor(() => {
+      expect(fetchLookBackAction).toHaveBeenCalledWith("2026-09-14");
+      expect(screen.getByText(/Tasks done/)).toBeTruthy();
+    });
+  });
+
+  it("shows zero counts as empty, distinct from unavailable", () => {
+    render(
+      <ReviewBoard
+        initialReview={draft}
+        history={[]}
+        lookBack={{
+          ok: true,
+          summary: {
+            ...summary,
+            metrics: summary.metrics.map((metric) =>
+              metric.available ? { ...metric, count: 0 } : metric,
+            ),
+            completed_tasks: [],
+            unfinished_tasks: [],
+          },
+        }}
+      />,
+    );
+    openLookBack();
+    expect(screen.getByText(/Completed work \(0\)/)).toBeTruthy();
+    expect(screen.getByText(/No tasks scheduled in the week are done/)).toBeTruthy();
+    // No metric is unavailable, so nothing renders as N/A.
+    expect(screen.queryAllByText("N/A").length).toBe(0);
+  });
+
+  it("renders an unavailable metric as N/A with an empty dashed ring", () => {
+    render(
+      <ReviewBoard
+        initialReview={draft}
+        history={[]}
+        lookBack={{
+          ok: true,
+          summary: {
+            ...summary,
+            metrics: [
+              { ...summary.metrics[0], available: false, count: null },
+              ...summary.metrics.slice(1),
+            ],
+          },
+        }}
+      />,
+    );
+    openLookBack();
+    expect(screen.getByText("N/A")).toBeTruthy();
+    // The whole metric keeps its donut shape (dashed ring), not a tick strip.
+    const section = screen.getByRole("heading", { name: /Look Back/ }).closest("section");
+    expect(section?.querySelectorAll(".review-donut").length).toBe(3);
+  });
+
+  it("shows partial fetch warnings when a source failed", () => {
+    render(
+      <ReviewBoard
+        initialReview={draft}
+        history={[]}
+        lookBack={{
+          ok: true,
+          summary: {
+            ...summary,
+            statuses: [{ name: "Calendar", ok: false, error: "down" }],
+          },
+        }}
+      />,
+    );
+    openLookBack();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("Calendar is unavailable");
+  });
+
+  it("renders the fixed saved summary for a completed record", () => {
+    render(
+      <ReviewBoard
+        initialReview={{ ...draft, status: "completed", completed_at: "2026-09-21T18:00:00Z", look_back_summary: summary }}
+        history={[]}
+        lookBack={null}
+      />,
+    );
+    openLookBack();
+    const section = screen.getByRole("heading", { name: /Look Back/ }).closest("section");
+    expect(section?.textContent).toContain("fixed history");
+    expect(section?.textContent).toContain("Shipped the slice");
+  });
+
+  it("degrades gracefully when a completed record has no saved summary", () => {
+    render(
+      <ReviewBoard
+        initialReview={{ ...draft, status: "completed", completed_at: "2026-09-21T18:00:00Z", look_back_summary: null }}
+        history={[]}
+        lookBack={null}
+      />,
+    );
+    openLookBack();
+    expect(screen.getByText(/look-back summary is unavailable right now/)).toBeTruthy();
   });
 });

@@ -1,9 +1,11 @@
 import { connection } from "next/server";
 
-import { startOfWeek } from "../../date-utils";
+import { defaultReviewWeek, startOfWeek } from "../../date-utils";
 import {
+  fetchLookBack,
   fetchReviewByWeek,
   startReview,
+  type LookBackSummary,
   type ReviewRecord,
 } from "./review-actions";
 import { ReviewBoard } from "./review-board";
@@ -20,7 +22,7 @@ export default async function WeeklyReviewPage({
   const weekCandidate = typeof requested === "string" ? requested : undefined;
   const localDay = getLocalDay();
   const weekStart = startOfWeek(
-    isValidWeek(weekCandidate) ? weekCandidate : previousCompletedWeek(localDay),
+    isValidWeek(weekCandidate) ? weekCandidate : defaultReviewWeek(localDay),
   );
 
   const result = await fetchReviewByWeek(weekStart);
@@ -45,11 +47,24 @@ export default async function WeeklyReviewPage({
     : [];
   const historyError = historyResult.ok ? null : historyResult.error;
 
+  // A completed record renders its fixed saved summary from the record
+  // itself, so live look-back data is only needed for drafts.
+  let lookBack: { ok: true; summary: LookBackSummary } | { ok: false; error: string } | null = null;
+  if (review.status !== "completed") {
+    const lookBackResult = await fetchLookBack(weekStart);
+    lookBack = lookBackResult;
+  }
+
+  // Keyed by record id: navigating to another week re-renders this server
+  // component with new props, but without a key the board's useState would
+  // keep the previous week's review, header, and textareas.
   return (
     <ReviewBoard
+      key={review.id}
       initialReview={review}
       history={history}
       historyError={historyError}
+      lookBack={lookBack}
     />
   );
 }
@@ -58,18 +73,6 @@ function isValidWeek(value: string | undefined): value is string {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T12:00:00Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-}
-
-function previousCompletedWeek(localDay: string): string {
-  // The previous completed week: Monday of last week. Reviewing on Sunday
-  // still targets the current week's Monday unless a week is requested.
-  const day = new Date(`${localDay}T12:00:00Z`);
-  const back = (day.getUTCDay() + 6) % 7;
-  const monday = new Date(day);
-  monday.setUTCDate(day.getUTCDate() - back);
-  const lastMonday = new Date(monday);
-  lastMonday.setUTCDate(monday.getUTCDate() - 7);
-  return lastMonday.toISOString().slice(0, 10);
 }
 
 function getLocalDay(): string {
