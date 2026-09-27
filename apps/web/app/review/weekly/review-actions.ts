@@ -15,6 +15,7 @@ export type LookBackMetric = {
   definition: string;
   available: boolean;
   count: number | null;
+  total?: number | null;
 };
 
 export type LookBackSummary = {

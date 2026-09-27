@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import {
   formatDay,
@@ -32,6 +33,25 @@ function formatTimestamp(value: string, timeZone: string) {
     timeStyle: "short",
     timeZone,
   }).format(new Date(value));
+}
+
+function formatDayRange(start: string, end: string) {
+  // Compact range, e.g. "21–27 Sep 2026"; "28 Sep–4 Oct 2026" across
+  // months, "29 Dec–4 Jan 2027" across years.
+  const startDate = new Date(`${start}T12:00:00Z`);
+  const endDate = new Date(`${end}T12:00:00Z`);
+  const dayFormat = new Intl.DateTimeFormat("en-GB", { day: "numeric", timeZone: "UTC" });
+  const monthFormat = new Intl.DateTimeFormat("en-GB", { month: "short", timeZone: "UTC" });
+  const yearFormat = new Intl.DateTimeFormat("en-GB", { year: "numeric", timeZone: "UTC" });
+  const sameMonth = start.slice(0, 7) === end.slice(0, 7);
+  const sameYear = start.slice(0, 4) === end.slice(0, 4);
+  if (sameMonth && sameYear) {
+    return `${dayFormat.format(startDate)}–${dayFormat.format(endDate)} ${monthFormat.format(endDate)} ${yearFormat.format(endDate)}`;
+  }
+  const startLabel = sameYear
+    ? `${dayFormat.format(startDate)} ${monthFormat.format(startDate)}`
+    : `${dayFormat.format(startDate)} ${monthFormat.format(startDate)} ${yearFormat.format(startDate)}`;
+  return `${startLabel}–${dayFormat.format(endDate)} ${monthFormat.format(endDate)} ${yearFormat.format(endDate)}`;
 }
 
 function ReviewSection({
@@ -121,27 +141,127 @@ function LookBackBody({
   return <SummaryView summary={live.summary} saved={false} />;
 }
 
+function Donut({ ratio, available }: { ratio: number; available: boolean }) {
+  // A small cake diagram: filled arc shows the done share. Unavailable
+  // metrics render an empty dashed ring instead of a zero.
+  const radius = 15;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.min(Math.max(ratio, 0), 1);
+  return (
+    <svg
+      className="review-donut"
+      viewBox="0 0 36 36"
+      role="img"
+      aria-hidden="true"
+      width={36}
+      height={36}
+    >
+      <circle
+        cx="18"
+        cy="18"
+        r={radius}
+        fill="none"
+        stroke={available ? "#e1e9e2" : "none"}
+        strokeWidth="4"
+        strokeDasharray={available ? undefined : "2 3"}
+      />
+      {available && clamped > 0 && (
+        <circle
+          cx="18"
+          cy="18"
+          r={radius}
+          fill="none"
+          stroke="#5c9a77"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeDasharray={`${clamped * circumference} ${circumference}`}
+          transform="rotate(-90 18 18)"
+          className="review-donut-fill"
+        />
+      )}
+    </svg>
+  );
+}
+
+// A plain count has no whole to be a share of, so it gets a small tick
+// strip instead of a donut.
+function EventBars({ count, available }: { count: number | null; available: boolean }) {
+  const shown = Math.min(count ?? 0, 12);
+  return (
+    <svg
+      className="review-donut"
+      viewBox="0 0 36 36"
+      role="img"
+      aria-hidden="true"
+      width={36}
+      height={36}
+    >
+      {!available ? (
+        <line x1="6" y1="18" x2="30" y2="18" stroke="#f0dfbf" strokeWidth="3" strokeDasharray="2 3" />
+      ) : (
+        Array.from({ length: shown }, (_, index) => (
+          <rect
+            key={index}
+            x={4 + index * 2.6}
+            y={24 - (4 + (index % 4) * 3)}
+            width="1.8"
+            height={4 + (index % 4) * 3}
+            rx="0.9"
+            fill="#5c9a77"
+            className="review-event-tick"
+            style={{ animationDelay: `${index * 40}ms` }}
+          />
+        ))
+      )}
+      {available && count !== null && count > 12 && (
+        <text x="18" y="34" textAnchor="middle" fontSize="7" fill="#7b8b82">
+          +{count - 12}
+        </text>
+      )}
+    </svg>
+  );
+}
+
+function MetricStat({ metric }: { metric: { key: string; label: string; definition: string; available: boolean; count: number | null; total?: number | null } }) {
+  const ratio =
+    metric.available && metric.count !== null && metric.total ? metric.count / metric.total : 0;
+  const hasWhole = metric.available && metric.total !== null && metric.total !== undefined;
+  const countLabel =
+    !metric.available || metric.count === null
+      ? "N/A"
+      : hasWhole
+        ? `${metric.count} of ${metric.total}`
+        : `${metric.count}`;
+  return (
+    <div className={`review-metric${metric.available ? "" : " unavailable"}`} title={metric.definition}>
+      {hasWhole ? (
+        <Donut ratio={ratio} available={metric.available} />
+      ) : (
+        <EventBars count={metric.available ? metric.count : null} available={metric.available} />
+      )}
+      <span className="review-metric-text">
+        <span className="review-metric-count">{countLabel}</span>
+        <span className="review-metric-label">{metric.label}</span>
+      </span>
+    </div>
+  );
+}
+
 function SummaryView({ summary, saved }: { summary: LookBackSummary; saved: boolean }) {
   const degraded = summary.metrics.some((metric) => !metric.available);
   return (
     <div className="look-back-summary">
       <div className="review-metrics">
         {summary.metrics.map((metric) => (
-          <div key={metric.key} className={`review-metric${metric.available ? "" : " unavailable"}`}>
-            <span className="review-metric-count" aria-label={metric.label}>
-              {metric.available ? metric.count : "N/A"}
-            </span>
-            <span className="review-metric-label">{metric.label}</span>
-            <span className="review-metric-definition">{metric.definition}</span>
-          </div>
+          <MetricStat key={metric.key} metric={metric} />
         ))}
       </div>
       <details className="review-task-list">
         <summary>
-          Completed work ({summary.completed_tasks.length}) — scheduled that week and now done
+          Completed work ({summary.completed_tasks.length}) — scheduled in the week and now done
         </summary>
         {summary.completed_tasks.length === 0 ? (
-          <p className="review-empty-note">No tasks were scheduled that week and are now done.</p>
+          <p className="review-empty-note">No tasks scheduled in the week are done.</p>
         ) : (
           <ul>
             {summary.completed_tasks.map((task) => (
@@ -156,7 +276,7 @@ function SummaryView({ summary, saved }: { summary: LookBackSummary; saved: bool
       <details className="review-task-list">
         <summary>Unfinished work ({summary.unfinished_tasks.length})</summary>
         {summary.unfinished_tasks.length === 0 ? (
-          <p className="review-empty-note">No unfinished work was scheduled that week.</p>
+          <p className="review-empty-note">No unfinished work scheduled in the week.</p>
         ) : (
           <ul>
             {summary.unfinished_tasks.map((task) => (
@@ -287,17 +407,44 @@ export function ReviewBoard({
   };
 
   const nextWeekPreviewStart = shiftDay(review.ahead_start, 0);
+  const router = useRouter();
+  const previousWeekStart = shiftDay(review.week_start, -7);
+  const followingWeekStart = shiftDay(review.week_start, 7);
+
+  const switchWeek = (weekStart: string) => {
+    // A different query param re-runs the server component; refresh clears
+    // the router cache so the switch actually reloads the data.
+    router.push(`/review/weekly?week_start=${weekStart}`);
+    router.refresh();
+  };
 
   return (
     <div className="dashboard-content">
       <section className="intro" aria-labelledby="review-title">
-        <div>
+        <div className="review-title-block">
           <p className="eyebrow"><span className="eyebrow-line" /> WEEKLY REVIEW</p>
-          <h1 id="review-title" className="week-title">
-            {formatDayShort(review.week_start).split(",")[1]?.trim() || formatDayShort(review.week_start)} –{" "}
-            {formatDayShort(review.week_end)}
-            <span className="title-period">.</span>
-          </h1>
+          <div className="review-week-nav">
+            <button
+              type="button"
+              className="review-week-step"
+              aria-label="Previous week"
+              onClick={() => switchWeek(previousWeekStart)}
+            >
+              ←
+            </button>
+            <h1 id="review-title" className="week-title">
+              {formatDayRange(review.week_start, review.week_end)}
+              <span className="title-period">.</span>
+            </h1>
+            <button
+              type="button"
+              className="review-week-step"
+              aria-label="Next week"
+              onClick={() => switchWeek(followingWeekStart)}
+            >
+              →
+            </button>
+          </div>
           <p className="intro-copy">
             A guided recalibration of your week. Your progress and answers save as you go.
           </p>
@@ -307,7 +454,8 @@ export function ReviewBoard({
             {isCompleted ? "Completed" : "Draft"}
           </span>
           <span className="review-dates">
-            {formatDayShort(review.week_start)} → {formatDayShort(review.ahead_end)}
+            <span>Reviewed {formatDayRange(review.week_start, review.week_end)}</span>
+            <span>Ahead {formatDayRange(review.ahead_start, review.ahead_end)}</span>
           </span>
         </div>
       </section>
@@ -489,7 +637,7 @@ export function ReviewBoard({
           <ul className="review-history-list">
             {history.map((entry) => (
               <li key={entry.id} className="review-history-item">
-                <span>{formatDayShort(entry.week_start)} – {formatDayShort(entry.week_end)}</span>
+                <span>{formatDayRange(entry.week_start, entry.week_end)}</span>
                 <span>Completed {entry.completed_at ? formatTimestamp(entry.completed_at, entry.timezone) : ""}</span>
               </li>
             ))}

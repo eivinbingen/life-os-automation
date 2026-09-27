@@ -173,14 +173,12 @@ def test_look_back_endpoint_returns_summary(look_back_app):
     keys = {metric["key"] for metric in body["metrics"]}
     assert keys == {
         "tasks_scheduled_done",
-        "completion_in_week",
         "events_in_week",
         "projects_touched",
     }
-    completion = next(m for m in body["metrics"] if m["key"] == "completion_in_week")
-    assert completion["available"] is False
-    assert completion["count"] is None
-    assert "no completion timestamp" in completion["definition"]
+    # Completion-in-week is not measurable, so the stat is not offered.
+    scheduled_done = next(m for m in body["metrics"] if m["key"] == "tasks_scheduled_done")
+    assert "not mean they were completed during the week" in scheduled_done["definition"]
 
 
 def test_look_back_endpoint_normalizes_non_monday_week_start(look_back_app):
@@ -295,8 +293,14 @@ def test_complete_with_failing_task_fetch_completes_without_summary(tmp_path):
     assert response.status_code == 200
     stored = store.get(review["id"])
     assert stored.status == "completed"
-    # An unexpected capture error never blocks completion.
-    assert stored.look_back_summary is None
+    # A capture error never blocks completion: the summary is saved in a
+    # degraded form with the failed source marked unavailable.
+    summary = stored.look_back_summary
+    assert summary is not None
+    by_key = {metric["key"]: metric for metric in summary["metrics"]}
+    assert by_key["tasks_scheduled_done"]["available"] is False
+    assert by_key["projects_touched"]["available"] is False
+    assert by_key["events_in_week"]["available"] is True
 
 
 def test_completed_retry_does_not_rewrite_summary(look_back_app):

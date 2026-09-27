@@ -10,6 +10,39 @@ NOTION_API_URL = "https://api.notion.com/v1"
 NOTION_VERSION = "2026-03-11"
 
 
+def fetch_active_projects(token: str, data_source_id: str, page_size: int) -> list[Task]:
+    """Fetch projects with the Notion-defined Active status (read-only).
+
+    Returns lightweight Task-shaped entries (id + name) reused as evidence
+    for project activity. Bounded by page_size pagination.
+    """
+
+    projects: list[Task] = {}
+    body = {
+        "filter": {"property": "Status", "status": {"equals": "Active"}},
+        "page_size": page_size,
+    }
+    while True:
+        res = requests.post(
+            url=f"{NOTION_API_URL}/data_sources/{data_source_id}/query",
+            headers=_headers(token),
+            json=body,
+        )
+        res.raise_for_status()
+        data = res.json()
+        for page in data["results"]:
+            props = page["properties"]
+            name = "".join(
+                part.get("plain_text", "") for part in props.get("Name", {}).get("title", [])
+            )
+            project = Task(id=page["id"], name=name)
+            projects.setdefault(project.id, project)
+        if not data["has_more"]:
+            break
+        body["start_cursor"] = data["next_cursor"]
+    return list(projects.values())
+
+
 def _headers(token: str) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {token}",

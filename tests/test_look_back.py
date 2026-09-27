@@ -1,3 +1,4 @@
+import ssl
 from datetime import date, datetime
 
 from requests import RequestException
@@ -47,12 +48,36 @@ def test_metrics_carry_honest_labels_and_definitions():
     by_key = {m.key: m for m in summary.metrics}
     assert by_key["tasks_scheduled_done"].available is True
     assert by_key["tasks_scheduled_done"].count == 1
-    assert "does not mean completed during the week" in by_key["tasks_scheduled_done"].definition
-    assert by_key["completion_in_week"].available is False
-    assert by_key["completion_in_week"].count is None
-    assert "no completion timestamp" in by_key["completion_in_week"].definition
+    assert by_key["tasks_scheduled_done"].total == 1
+    definition = by_key["tasks_scheduled_done"].definition
+    assert "does not mean they were completed during the week" in definition
+    assert by_key["tasks_scheduled_done"].label == "Tasks done"
     assert by_key["events_in_week"].count == 1
+    assert by_key["events_in_week"].total is None
     assert by_key["projects_touched"].count == 1
+    assert by_key["projects_touched"].label == "Projects worked on"
+    assert by_key["projects_touched"].total is None
+    # Completion-in-week is not measurable, so the stat is not offered at all.
+    assert "completion_in_week" not in by_key
+
+
+def test_tasks_total_counts_all_scheduled_in_week_including_done():
+    summary = build_look_back(
+        WEEK_START,
+        WEEK_END,
+        [
+            task("a", scheduled=date(2026, 9, 16), done=True),
+            task("b", scheduled=date(2026, 9, 17)),
+            task("c", scheduled=date(2026, 9, 18)),
+            task("outside", scheduled=date(2026, 9, 22)),
+        ],
+        [task("a", scheduled=date(2026, 9, 16), done=True)],
+        [],
+        [IntegrationStatus(name="Notion", ok=True)],
+    )
+    by_key = {m.key: m for m in summary.metrics}
+    assert by_key["tasks_scheduled_done"].count == 1
+    assert by_key["tasks_scheduled_done"].total == 3
 
 
 def test_done_tasks_scheduled_outside_week_are_excluded():
@@ -151,8 +176,11 @@ def test_projects_touched_merges_completed_and_unfinished_evidence():
         [IntegrationStatus(name="Notion", ok=True)],
     )
     by_key = {m.key: m for m in summary.metrics}
+    # Plain count: no share, since projects completed/dropped during the
+    # week have no reliable total to be a denominator.
     assert by_key["projects_touched"].count == 2
-    assert by_key["projects_touched"].definition.startswith("Distinct project names")
+    assert by_key["projects_touched"].total is None
+    assert by_key["projects_touched"].definition.startswith("Distinct projects")
 
 
 def test_completed_tasks_and_unfinished_entries_carry_id_name_project():
@@ -204,6 +232,27 @@ def test_get_look_back_degrades_on_fetch_failures():
     assert by_key["tasks_scheduled_done"].available is False
     assert by_key["events_in_week"].available is False
     assert all(s["ok"] is False for s in summary.statuses)
+
+
+def test_get_look_back_degrades_on_unexpected_errors():
+    # An unexpected error (e.g. ssl.SSLError from the Google client) must
+    # degrade the source, not propagate and 500 the endpoint.
+    def fail_events(start, end):
+        raise ssl.SSLError(1, "wrong version number")
+
+    summary = get_look_back(
+        WEEK_START,
+        WEEK_END,
+        lambda start, end: TaskFetchResult(tasks=[]),
+        lambda start, end: TaskFetchResult(tasks=[]),
+        fail_events,
+    )
+    by_key = {m.key: m for m in summary.metrics}
+    assert by_key["events_in_week"].available is False
+    assert by_key["tasks_scheduled_done"].available is True
+    statuses = {s["name"]: s for s in summary.statuses}
+    assert statuses["Calendar"]["ok"] is False
+    assert statuses["Notion"]["ok"] is True
 
 
 def test_get_look_back_returns_live_data_from_fetchers():

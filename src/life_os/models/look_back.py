@@ -8,6 +8,7 @@ class LookBackMetric:
 
     `definition` names the exact evidence behind the count so the label
     cannot imply tracking that does not exist (e.g. completion time).
+    `total` is the denominator for "X out of Y" display, when meaningful.
     """
 
     key: str
@@ -15,6 +16,7 @@ class LookBackMetric:
     definition: str
     available: bool = True
     count: int | None = None
+    total: int | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -23,6 +25,7 @@ class LookBackMetric:
             "definition": self.definition,
             "available": self.available,
             "count": self.count,
+            "total": self.total,
         }
 
     @classmethod
@@ -33,6 +36,7 @@ class LookBackMetric:
             definition=data["definition"],
             available=bool(data.get("available", True)),
             count=data.get("count"),
+            total=data.get("total"),
         )
 
 

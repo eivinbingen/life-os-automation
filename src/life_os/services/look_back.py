@@ -2,9 +2,6 @@ from collections.abc import Callable
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
-from googleapiclient.errors import HttpError
-from requests import RequestException
-
 from life_os.models.calendar import CalendarEvent
 from life_os.models.look_back import LookBackMetric, LookBackSummary
 from life_os.models.notion import Task, TaskFetchResult
@@ -44,8 +41,7 @@ def build_look_back(
     """Bucket a reviewed week's fetched data into the honest Look Back summary.
 
     Completion is not tracked, so the completed-work measure is "scheduled
-    that week and now done"; completion-in-week stays explicitly
-    unavailable. Lists are deduplicated by task ID.
+    in the week and now done". Lists are deduplicated by task ID.
     """
 
     notion_ok = all(s.ok for s in statuses if s.name == "Notion")
@@ -53,10 +49,17 @@ def build_look_back(
 
     completed = {t.id: t for t in done_week_tasks if _scheduled_in_week(t, week_start, week_end)}
     unfinished: dict[str, Task] = {}
+    scheduled_incomplete: dict[str, Task] = {}
     for task in week_tasks:
-        if task.done or not _scheduled_in_week(task, week_start, week_end):
+        if not _scheduled_in_week(task, week_start, week_end):
+            continue
+        scheduled_incomplete.setdefault(task.id, task)
+        if task.done:
             continue
         unfinished.setdefault(task.id, task)
+    # The incomplete fetch cannot contain done tasks, so the scheduled total
+    # unions both fetches to get the real denominator.
+    scheduled_total = len(set(scheduled_incomplete) | set(completed))
 
     completed_names = sorted(
         {t.project_name for t in completed.values() if t.project_name}
@@ -69,28 +72,18 @@ def build_look_back(
     metrics = [
         LookBackMetric(
             key="tasks_scheduled_done",
-            label="Tasks scheduled that week and now done",
+            label="Tasks done",
             definition=(
-                "Unique tasks with a Scheduled date inside the reviewed week whose "
-                "Done checkbox is now checked. Completion date is not tracked, so "
-                "this does not mean completed during the week."
+                "Out of tasks scheduled in the reviewed week. Completion date is not "
+                "tracked, so this does not mean they were completed during the week."
             ),
             available=notion_ok,
             count=len(completed) if notion_ok else None,
-        ),
-        LookBackMetric(
-            key="completion_in_week",
-            label="Tasks completed during that week",
-            definition=(
-                "Unavailable: tasks have no completion timestamp; last-edited "
-                "time is not completion time."
-            ),
-            available=False,
-            count=None,
+            total=scheduled_total if notion_ok else None,
         ),
         LookBackMetric(
             key="events_in_week",
-            label="Calendar events that week",
+            label="Calendar events",
             definition=(
                 "Unique calendar events with a start inside the reviewed week "
                 "(Europe/Zurich)."
@@ -100,14 +93,17 @@ def build_look_back(
         ),
         LookBackMetric(
             key="projects_touched",
-            label="Projects of tasks scheduled that week",
+            label="Projects worked on",
             definition=(
-                "Distinct project names on the tasks in the two measures above. "
-                "Evidence is the Project relation of those fetched tasks only; "
-                "no other project activity is tracked."
+                "Distinct projects with tasks scheduled in the reviewed week. "
+                "Evidence is the Project relation of the fetched tasks; no other "
+                "project activity is tracked. Projects completed or dropped "
+                "during the week are included, so this has no reliable total "
+                "to be a share of."
             ),
             available=notion_ok,
             count=len(projects_touched) if notion_ok else None,
+            total=None,
         ),
     ]
 
@@ -141,10 +137,12 @@ def get_look_back(
 
     statuses: list[IntegrationStatus] = []
 
+    # Any failure — network, SSL, auth — makes the source unavailable; a
+    # narrow except would let an unexpected error 500 the whole endpoint.
     try:
         events = fetch_week_events(week_start, week_end)
         statuses.append(IntegrationStatus(name="Calendar", ok=True))
-    except (HttpError, RequestException) as error:
+    except Exception as error:
         events = []
         statuses.append(IntegrationStatus(name="Calendar", ok=False, error=str(error)))
 
@@ -152,7 +150,7 @@ def get_look_back(
         week_tasks = fetch_week_tasks(week_start, week_end).tasks
         done_week_tasks = fetch_done_week_tasks(week_start, week_end).tasks
         statuses.append(IntegrationStatus(name="Notion", ok=True))
-    except RequestException as error:
+    except Exception as error:
         week_tasks = []
         done_week_tasks = []
         statuses.append(IntegrationStatus(name="Notion", ok=False, error=str(error)))
