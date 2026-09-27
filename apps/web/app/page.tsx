@@ -43,6 +43,10 @@ export default async function Home({ searchParams }: PageProps<"/">) {
           </div>
           <Link className="nav-link" href="/weekly">
             <span className="nav-icon" aria-hidden="true">▦</span>
+            Weekly overview
+          </Link>
+          <Link className="nav-link" href="/review/weekly">
+            <span className="nav-icon" aria-hidden="true">◉</span>
             Weekly Review
           </Link>
         </div>
