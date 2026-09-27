@@ -4,6 +4,13 @@ from fastapi.testclient import TestClient
 from requests import HTTPError, Response
 
 from life_os.api import create_app
+from life_os.models.courses import (
+    Course,
+    CourseScheduleItem,
+)
+from life_os.models.courses import (
+    StudiesOverview as DomainStudiesOverview,
+)
 from life_os.models.finance import (
     AccountBalance,
     CategoryComparison,
@@ -110,6 +117,7 @@ def test_create_task_maps_request_and_returns_task():
         "due": None,
         "project_id": None,
         "project_name": None,
+        "course_id": None,
     }
     assert created == [
         TaskCreate(name="Buy oat milk", scheduled=date(2026, 9, 20))
@@ -477,3 +485,89 @@ def test_finance_route_absent_without_callable():
     response = client.get("/finance")
 
     assert response.status_code == 404
+
+
+def test_studies_route_returns_normalized_overview():
+    fetch_events, fetch_tasks, update = _minimal_fetchers()
+
+    def fetch_studies():
+        return DomainStudiesOverview(
+            courses=[
+                Course(
+                    id="course-1",
+                    name="Corporate Finance",
+                    next_item=CourseScheduleItem(
+                        id="i-1",
+                        name="Exam",
+                        kind="assessment",
+                        course_id="course-1",
+                        course_name="Corporate Finance",
+                        due=date(2026, 11, 20),
+                    ),
+                    upcoming=[
+                        CourseScheduleItem(
+                            id="i-1",
+                            name="Exam",
+                            kind="assessment",
+                            course_id="course-1",
+                            course_name="Corporate Finance",
+                            due=date(2026, 11, 20),
+                        )
+                    ],
+                )
+            ],
+            upcoming=[
+                CourseScheduleItem(
+                    id="i-1",
+                    name="Exam",
+                    kind="assessment",
+                    course_id="course-1",
+                    course_name="Corporate Finance",
+                    due=date(2026, 11, 20),
+                )
+            ],
+        )
+
+    client = TestClient(
+        create_app(fetch_events, fetch_tasks, update, fetch_studies=fetch_studies)
+    )
+
+    response = client.get("/studies")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["courses"][0]["name"] == "Corporate Finance"
+    assert body["courses"][0]["next_item"]["due"] == "2026-11-20"
+    assert body["upcoming"][0]["due"] == "2026-11-20"
+    assert body["statuses"] == []
+
+
+def test_studies_route_absent_without_callable():
+    fetch_events, fetch_tasks, update = _minimal_fetchers()
+
+    client = TestClient(create_app(fetch_events, fetch_tasks, update))
+
+    response = client.get("/studies")
+
+    assert response.status_code == 404
+
+
+def test_studies_route_degrades_when_notion_fails():
+    from requests import RequestException as RequestError
+
+    fetch_events, fetch_tasks, update = _minimal_fetchers()
+
+    def fetch_studies():
+        raise RequestError("Notion unreachable")
+
+    client = TestClient(
+        create_app(fetch_events, fetch_tasks, update, fetch_studies=fetch_studies)
+    )
+
+    response = client.get("/studies")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["courses"] == []
+    assert body["upcoming"] == []
+    assert body["statuses"] == [{"name": "Notion", "ok": False, "error": "Notion unreachable"}]

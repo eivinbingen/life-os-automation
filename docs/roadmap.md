@@ -48,7 +48,8 @@ discovery concludes.
   [PR #25](https://github.com/eivinbingen/life-os-automation/pull/25) as an explicitly
   accepted transitional screen. Reuse its adapters/service/UI for V2; its temporary
   `/weekly` route and overdue panel do not complete the revised #9 Ahead slice.
-- Studies: active courses and upcoming academic work (#10).
+- Studies: active courses and upcoming academic work (#10) — delivered by the
+  read-only `/studies` overview (PR link added at merge).
 
 These are the next agreed milestones after Today v2. Their relative delivery order
 remains undecided. Weekly Review V2 planning precedes parallel implementation;
