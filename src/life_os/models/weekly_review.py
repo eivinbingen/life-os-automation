@@ -73,6 +73,9 @@ class WeeklyReview:
 
     @classmethod
     def from_dict(cls, data: dict) -> "WeeklyReview":
+        section_progress = data.get("section_progress")
+        if section_progress is not None and not isinstance(section_progress, dict):
+            raise TypeError("section_progress must be an object")
         return cls(
             id=data["id"],
             week_start=date.fromisoformat(data["week_start"]),
@@ -89,7 +92,7 @@ class WeeklyReview:
                 if data.get("completed_at")
                 else None
             ),
-            section_progress=SectionProgress.from_dict(data.get("section_progress")),
+            section_progress=SectionProgress.from_dict(section_progress),
             wins=data.get("wins", ""),
             reflection=data.get("reflection", ""),
         )

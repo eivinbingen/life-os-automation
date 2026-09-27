@@ -102,3 +102,21 @@ def test_corrupt_store_reports_error(review_app):
     response = client.get("/reviews/weekly")
     assert response.status_code == 422
     assert "backup" in response.json()["detail"]
+
+
+def test_start_rejects_non_monday_week(review_app):
+    store, client = review_app
+    response = client.post("/reviews/weekly", params={"week_start": "2026-09-15"})
+    assert response.status_code == 422
+    assert "Monday" in response.json()["detail"]
+    assert store.list() == []
+
+
+def test_complete_rejects_blank_operation_id(review_app):
+    store, client = review_app
+    review = client.post("/reviews/weekly", params={"week_start": WEEK.isoformat()}).json()
+    response = client.post(
+        f"/reviews/weekly/{review['id']}/complete",
+        json={"expected_revision": 1, "operation_id": "  "},
+    )
+    assert response.status_code == 422

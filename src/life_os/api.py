@@ -94,6 +94,13 @@ class WeeklyReviewCompleteRequest(BaseModel):
     reflection: str | None = None
     section_progress: dict[str, bool] | None = None
 
+    @field_validator("operation_id")
+    @classmethod
+    def operation_id_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("operation_id must not be blank")
+        return value
+
 
 def _review_endpoint_error(error: WeeklyReviewError) -> HTTPException:
     if isinstance(error, ReviewConflict):

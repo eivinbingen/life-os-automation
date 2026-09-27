@@ -43,11 +43,13 @@ export default async function WeeklyReviewPage({
   const history = historyResult.ok
     ? historyResult.reviews.filter((entry) => entry.id !== review.id)
     : [];
+  const historyError = historyResult.ok ? null : historyResult.error;
 
   return (
     <ReviewBoard
       initialReview={review}
       history={history}
+      historyError={historyError}
     />
   );
 }

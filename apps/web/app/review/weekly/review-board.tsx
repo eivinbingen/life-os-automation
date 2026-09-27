@@ -22,6 +22,14 @@ function formatDayShort(value: string) {
   return formatDay(value);
 }
 
+function formatTimestamp(value: string, timeZone: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone,
+  }).format(new Date(value));
+}
+
 function ReviewSection({
   section,
   index,
@@ -81,9 +89,11 @@ function ReviewSection({
 export function ReviewBoard({
   initialReview,
   history,
+  historyError,
 }: {
   initialReview: ReviewRecord;
   history: ReviewRecord[];
+  historyError?: string | null;
 }) {
   const [review, setReview] = useState(initialReview);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({ look_back: true, commit: true });
@@ -95,6 +105,13 @@ export function ReviewBoard({
   const [completing, setCompleting] = useState(false);
   // Guards against duplicate saves/completions before state updates land.
   const writeInFlight = useRef(false);
+  // Edits made while a save is in flight; flushed against the revision that
+  // save returns so a reload cannot lose them.
+  const pendingEdits = useRef<{
+    wins?: string;
+    reflection?: string;
+    section_progress?: SectionProgress;
+  }>({});
 
   const isCompleted = review.status === "completed";
 
@@ -103,24 +120,42 @@ export function ReviewBoard({
       edits: { wins?: string; reflection?: string; section_progress?: SectionProgress },
       options: { complete?: boolean } = {},
     ) => {
-      if (writeInFlight.current) return;
+      if (writeInFlight.current) {
+        pendingEdits.current = { ...pendingEdits.current, ...edits };
+        return;
+      }
       writeInFlight.current = true;
       setSaveState("saving");
       setSaveError(null);
 
-      const { completeReview, saveReviewDraft } = await import("./review-actions");
-      const result = options.complete
-        ? await completeReview(review.id, review.revision, `${review.id}:${review.revision}`, edits)
-        : await saveReviewDraft(review.id, review.revision, edits);
-
-      writeInFlight.current = false;
-      if (result.ok) {
-        setReview(result.review);
-        setProgress(result.review.section_progress);
-        setSaveState("saved");
-      } else {
-        setSaveState(result.conflict ? "conflict" : "error");
-        setSaveError(result.error);
+      try {
+        const { completeReview, saveReviewDraft } = await import("./review-actions");
+        let current = review;
+        let payload = edits;
+        let complete = options.complete;
+        for (;;) {
+          const result = complete
+            ? await completeReview(current.id, current.revision, `${current.id}:${current.revision}`, payload)
+            : await saveReviewDraft(current.id, current.revision, payload);
+          if (!result.ok) {
+            pendingEdits.current = {};
+            setSaveState(result.conflict ? "conflict" : "error");
+            setSaveError(result.error);
+            return;
+          }
+          current = result.review;
+          setReview(current);
+          setProgress(current.section_progress);
+          setSaveState("saved");
+          if (complete || Object.keys(pendingEdits.current).length === 0) return;
+          // Completed records reject later edits, so queued follow-ups only
+          // apply to draft saves.
+          complete = false;
+          payload = pendingEdits.current;
+          pendingEdits.current = {};
+        }
+      } finally {
+        writeInFlight.current = false;
       }
     },
     [review],
@@ -296,7 +331,7 @@ export function ReviewBoard({
         </p>
         {isCompleted ? (
           <p className="review-completed-note">
-            Completed {review.completed_at ? new Date(review.completed_at).toLocaleString() : ""}. This
+            Completed {review.completed_at ? formatTimestamp(review.completed_at, review.timezone) : ""}. This
             record is saved history; later source changes do not rewrite it.
           </p>
         ) : (
@@ -317,6 +352,18 @@ export function ReviewBoard({
         )}
       </ReviewSection>
 
+      {historyError && (
+        <section className="panel" aria-labelledby="review-history-heading">
+          <div className="panel-heading">
+            <div><span className="section-kicker">HISTORY</span><h2 id="review-history-heading">Completed reviews</h2></div>
+          </div>
+          <div className="integration-alert" role="alert">
+            <span className="alert-symbol" aria-hidden="true">!</span>
+            <span>{historyError}</span>
+          </div>
+        </section>
+      )}
+
       {history.length > 0 && (
         <section className="panel" aria-labelledby="review-history-heading">
           <div className="panel-heading">
@@ -327,7 +374,7 @@ export function ReviewBoard({
             {history.map((entry) => (
               <li key={entry.id} className="review-history-item">
                 <span>{formatDayShort(entry.week_start)} – {formatDayShort(entry.week_end)}</span>
-                <span>Completed {entry.completed_at ? new Date(entry.completed_at).toLocaleDateString() : ""}</span>
+                <span>Completed {entry.completed_at ? formatTimestamp(entry.completed_at, entry.timezone) : ""}</span>
               </li>
             ))}
           </ul>

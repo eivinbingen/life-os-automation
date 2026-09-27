@@ -5,6 +5,7 @@ import tempfile
 import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from life_os.models.weekly_review import WeeklyReview
 
@@ -14,6 +15,11 @@ STORE_DIR = "var/life-os"
 STORE_FILE = "weekly-reviews.json"
 LOCK_FILE = "weekly-reviews.lock"
 TIMEZONE = "Europe/Zurich"
+_TZ = ZoneInfo(TIMEZONE)
+
+
+def _now() -> datetime:
+    return datetime.now(_TZ)
 
 
 class WeeklyReviewError(Exception):
@@ -67,6 +73,12 @@ def _validate_store(data: dict) -> None:
             "The weekly review store's reviews field is malformed. "
             "Restore it from a backup; it was left untouched."
         )
+    operations = data.get("operations", {})
+    if not isinstance(operations, dict):
+        raise WeeklyReviewError(
+            "The weekly review store's operations metadata is malformed. "
+            "Restore it from a backup; it was left untouched."
+        )
     seen_ids: set[str] = set()
     seen_weeks: set[str] = set()
     for key, entry in data["reviews"].items():
@@ -91,6 +103,31 @@ def _validate_store(data: dict) -> None:
             raise WeeklyReviewError(
                 f"The weekly review record {key} has an invalid revision. "
                 "Restore it from a backup; it was left untouched."
+            )
+        if review.week_end != review.week_start + timedelta(days=6):
+            raise WeeklyReviewError(
+                f"The weekly review record {key} has mismatched week dates. "
+                "Restore it from a backup; it was left untouched."
+            )
+        if review.ahead_start != review.week_start + timedelta(days=7):
+            raise WeeklyReviewError(
+                f"The weekly review record {key} has mismatched Ahead dates. "
+                "Restore it from a backup; it was left untouched."
+            )
+        if review.ahead_end != review.ahead_start + timedelta(days=6):
+            raise WeeklyReviewError(
+                f"The weekly review record {key} has mismatched Ahead dates. "
+                "Restore it from a backup; it was left untouched."
+            )
+        if review.timezone != TIMEZONE:
+            raise WeeklyReviewError(
+                f"The weekly review record {key} has an unsupported timezone. "
+                "Restore it from a backup; it was left untouched."
+            )
+        if review.status == "completed" and review.completed_at is None:
+            raise WeeklyReviewError(
+                f"The weekly review record {key} is completed but has no completion "
+                "timestamp. Restore it from a backup; it was left untouched."
             )
         seen_ids.add(review.id)
         week_key = review.week_start.isoformat()
@@ -167,13 +204,19 @@ class WeeklyReviewRepository:
     def start(self, week_start: date) -> WeeklyReview:
         """Create (or return the existing) draft for the reviewed week."""
 
+        if week_start.weekday() != 0:
+            raise WeeklyReviewError(
+                "The reviewed week must start on a Monday. "
+                f"{week_start.isoformat()} is a {week_start.strftime('%A')}."
+            )
+
         def operation() -> WeeklyReview:
             data = _load_file(self._path)
             for entry in data["reviews"].values():
                 existing = WeeklyReview.from_dict(entry)
                 if existing.week_start == week_start:
                     return existing
-            now = datetime.now()
+            now = _now()
             ahead_start, ahead_end = _pair_ahead(week_start)
             review = WeeklyReview(
                 id=uuid.uuid4().hex,
@@ -228,7 +271,7 @@ class WeeklyReviewRepository:
             if section_progress is not None:
                 review.section_progress = review.section_progress.from_dict(section_progress)
             review.revision += 1
-            review.updated_at = datetime.now()
+            review.updated_at = _now()
             data["reviews"][review_id] = review.to_dict()
             _atomic_write(self._path, data)
             return review
@@ -279,7 +322,7 @@ class WeeklyReviewRepository:
                 review.section_progress = review.section_progress.from_dict(section_progress)
             review.status = "completed"
             review.revision += 1
-            now = datetime.now()
+            now = _now()
             review.updated_at = now
             review.completed_at = now
             data["reviews"][review_id] = review.to_dict()

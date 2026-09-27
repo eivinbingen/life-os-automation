@@ -159,4 +159,37 @@ describe("Guided weekly review", () => {
     expect((screen.getByPlaceholderText("What went well this week?") as HTMLTextAreaElement).disabled).toBe(true);
     expect(screen.queryByRole("button", { name: "Complete review" })).toBeNull();
   });
+
+  it("queues an edit made while a save is in flight and flushes it after", async () => {
+    const user = userEvent.setup();
+    let resolveFirst: (value: { ok: true; review: ReviewRecord }) => void = () => {};
+    saveReviewDraft.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    renderBoard();
+    const wins = screen.getByPlaceholderText("What went well this week?");
+    await user.type(wins, "first edit");
+    await user.tab();
+    const reflection = screen.getByPlaceholderText("Anything you want to remember about this week?");
+    await user.type(reflection, "second edit");
+    await user.tab();
+    await waitFor(() => {
+      expect(saveReviewDraft).toHaveBeenCalledTimes(1);
+    });
+    resolveFirst({ ok: true, review: { ...draft, revision: 4, wins: "first edit" } });
+    await waitFor(() => {
+      expect(saveReviewDraft).toHaveBeenCalledTimes(2);
+    });
+    expect(saveReviewDraft).toHaveBeenLastCalledWith("review-1", 4, { reflection: "second edit" });
+  });
+
+  it("shows an unavailable history state with the error instead of empty history", () => {
+    render(<ReviewBoard initialReview={draft} history={[]} historyError="The Life OS service could not load review history. Please try again." />);
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("could not load review history");
+    expect(screen.getByText("Completed reviews")).toBeTruthy();
+  });
 });

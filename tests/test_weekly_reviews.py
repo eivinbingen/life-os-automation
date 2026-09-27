@@ -162,3 +162,62 @@ def test_atomic_replacement_leaves_no_temp_files(store):
     store.start(WEEK)
     leftovers = [p for p in store._path.parent.iterdir() if p.suffix == ".tmp"]
     assert leftovers == []
+
+
+def test_start_rejects_non_monday_week(store):
+    with pytest.raises(WeeklyReviewError) as error:
+        store.start(date(2026, 9, 15))  # a Tuesday
+    assert "Monday" in str(error.value)
+    assert store.list() == []
+
+
+def test_completed_at_is_timezone_aware(store):
+    review = store.start(WEEK)
+    completed = store.complete(review.id, expected_revision=1, operation_id="op-1")
+    assert completed.completed_at is not None
+    assert completed.completed_at.tzinfo is not None
+    stored = json.loads(store._path.read_text(encoding="utf-8"))
+    assert stored["reviews"][review.id]["completed_at"].endswith("+02:00") or (
+        stored["reviews"][review.id]["completed_at"].endswith("+01:00")
+    )
+
+
+def test_section_progress_non_object_is_actionable_and_untouched(store):
+    review = store.start(WEEK)
+    data = json.loads(store._path.read_text(encoding="utf-8"))
+    data["reviews"][review.id]["section_progress"] = ["look_back"]
+    store._path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(WeeklyReviewError) as error:
+        store.list()
+    assert "backup" in str(error.value)
+    assert store._path.read_text(encoding="utf-8") == json.dumps(data)
+
+
+def test_operations_metadata_non_object_is_rejected(store):
+    store.start(WEEK)
+    data = json.loads(store._path.read_text(encoding="utf-8"))
+    data["operations"] = ["op-1"]
+    store._path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(WeeklyReviewError) as error:
+        store.list()
+    assert "backup" in str(error.value)
+
+
+def test_completed_record_without_timestamp_is_rejected(store):
+    review = store.start(WEEK)
+    data = json.loads(store._path.read_text(encoding="utf-8"))
+    entry = data["reviews"][review.id]
+    entry["status"] = "completed"
+    entry["completed_at"] = None
+    store._path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(WeeklyReviewError):
+        store.list()
+
+
+def test_record_with_mismatched_week_dates_is_rejected(store):
+    review = store.start(WEEK)
+    data = json.loads(store._path.read_text(encoding="utf-8"))
+    data["reviews"][review.id]["week_end"] = "2026-09-25"
+    store._path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(WeeklyReviewError):
+        store.list()
