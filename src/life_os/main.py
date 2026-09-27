@@ -19,6 +19,7 @@ from life_os.integrations.notion_tasks import (
     update_task,
 )
 from life_os.services.finance import get_finance_review
+from life_os.services.weekly_reviews import STORE_ENV_VAR, WeeklyReviewRepository
 
 
 def main():
@@ -54,6 +55,11 @@ def main():
         excluded_categories=EXCLUDED_CATEGORIES,
     )
 
+    # The review store resolves from the repository root regardless of the
+    # launch working directory.
+    os.environ.setdefault(STORE_ENV_VAR, str(_repository_root()))
+    reviews = WeeklyReviewRepository()
+
     app = create_app(
         fetch_events,
         fetch_tasks,
@@ -62,8 +68,15 @@ def main():
         fetch_week_events,
         fetch_week_tasks,
         get_finance=get_finance,
+        reviews=reviews,
     )
     uvicorn.run(app, host="127.0.0.1", port=8000)
+
+
+def _repository_root():
+    from pathlib import Path
+
+    return Path(__file__).resolve().parents[2]
 
 
 if __name__ == "__main__":

@@ -21,9 +21,15 @@ from life_os.models.notion import (
 from life_os.models.notion import (
     TaskUpdate as DomainTaskUpdate,
 )
+from life_os.models.weekly_review import WeeklyReview as DomainWeeklyReview
 from life_os.services.finance import format_mapping_problems
 from life_os.services.today import get_today
 from life_os.services.week import get_week
+from life_os.services.weekly_reviews import (
+    ReviewConflict,
+    WeeklyReviewError,
+    WeeklyReviewRepository,
+)
 
 
 class TaskUpdate(BaseModel):
@@ -77,6 +83,40 @@ class CreateTaskRequest(BaseModel):
         return value.strip()
 
 
+class WeeklyReviewDraftUpdate(BaseModel):
+    """What a draft save means to change; omitted keys preserve stored text."""
+
+    expected_revision: int
+    wins: str | None = None
+    reflection: str | None = None
+    section_progress: dict[str, bool] | None = None
+
+
+class WeeklyReviewCompleteRequest(BaseModel):
+    """Complete a review; idempotent per operation_id."""
+
+    expected_revision: int
+    operation_id: str
+    wins: str | None = None
+    reflection: str | None = None
+    section_progress: dict[str, bool] | None = None
+
+    @field_validator("operation_id")
+    @classmethod
+    def operation_id_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("operation_id must not be blank")
+        return value
+
+
+def _review_endpoint_error(error: WeeklyReviewError) -> HTTPException:
+    if isinstance(error, ReviewConflict):
+        return HTTPException(status_code=409, detail=str(error))
+    not_found = "could not be found" in str(error)
+    status = 404 if not_found else 422
+    return HTTPException(status_code=status, detail=str(error))
+
+
 def _notion_write_error(error: HTTPError, action: str) -> HTTPException:
     status = error.response.status_code if error.response is not None else None
     if status == 403:
@@ -119,6 +159,7 @@ def create_app(
     fetch_week_events: Callable[[date, date], list[CalendarEvent]] | None = None,
     fetch_week_tasks: Callable[[date, date], TaskFetchResult] | None = None,
     get_finance: Callable[[str], FinanceReview] | None = None,
+    reviews: WeeklyReviewRepository | None = None,
 ) -> FastAPI:
 
     app = FastAPI()
@@ -126,6 +167,67 @@ def create_app(
     @app.get("/health")
     def health():
         return {"status": "ok"}
+
+    if reviews is not None:
+
+        @app.get("/reviews/weekly")
+        def list_reviews_endpoint(week_start: date | None = None) -> list[DomainWeeklyReview]:
+            try:
+                listing = reviews.list()
+                if week_start is not None:
+                    listing = [review for review in listing if review.week_start == week_start]
+                return listing
+            except WeeklyReviewError as error:
+                raise _review_endpoint_error(error) from error
+
+        @app.get("/reviews/weekly/{review_id}")
+        def get_review_endpoint(review_id: str) -> DomainWeeklyReview:
+            try:
+                return reviews.get(review_id)
+            except WeeklyReviewError as error:
+                raise _review_endpoint_error(error) from error
+
+        @app.post("/reviews/weekly", status_code=201)
+        def start_review_endpoint(week_start: date) -> DomainWeeklyReview:
+            try:
+                return reviews.start(week_start)
+            except WeeklyReviewError as error:
+                raise _review_endpoint_error(error) from error
+
+        @app.patch("/reviews/weekly/{review_id}")
+        def save_review_endpoint(
+            review_id: str, update: WeeklyReviewDraftUpdate
+        ) -> DomainWeeklyReview:
+            try:
+                return reviews.save_draft(
+                    review_id,
+                    update.expected_revision,
+                    wins=update.wins if "wins" in update.model_fields_set else None,
+                    reflection=(
+                        update.reflection if "reflection" in update.model_fields_set else None
+                    ),
+                    section_progress=update.section_progress,
+                )
+            except WeeklyReviewError as error:
+                raise _review_endpoint_error(error) from error
+
+        @app.post("/reviews/weekly/{review_id}/complete")
+        def complete_review_endpoint(
+            review_id: str, request: WeeklyReviewCompleteRequest
+        ) -> DomainWeeklyReview:
+            try:
+                return reviews.complete(
+                    review_id,
+                    request.expected_revision,
+                    request.operation_id,
+                    wins=request.wins if "wins" in request.model_fields_set else None,
+                    reflection=(
+                        request.reflection if "reflection" in request.model_fields_set else None
+                    ),
+                    section_progress=request.section_progress,
+                )
+            except WeeklyReviewError as error:
+                raise _review_endpoint_error(error) from error
 
     @app.get("/today")
     def today(day: date | None = None):

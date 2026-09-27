@@ -316,3 +316,35 @@ body { margin: 0; min-height: 100vh; background: var(--paper); color: var(--ink)
 .finance-diff-under { color: var(--green); }
 .finance-diff-over { color: #b3563f; }
 .finance-diff-zero { color: #789085; }
+
+/* Guided weekly review */
+.review-status { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.review-state-chip { display: inline-flex; align-items: center; padding: 6px 14px; border: 1px solid #dce7df; border-radius: 999px; background: #fff; color: #547467; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.review-state-chip.completed { background: #eef5ed; border-color: #cfe3d2; color: var(--deep); }
+.review-dates { color: #6d8077; font-size: 11px; }
+.review-progress { display: flex; flex-wrap: wrap; gap: 8px; margin: 26px 0 22px; }
+.review-step { padding: 6px 13px; border: 1px solid #e1e9e2; border-radius: 999px; background: #fff; color: #7b8b82; font-size: 11px; font-weight: 700; }
+.review-step.done { background: #eef5ed; border-color: #cfe3d2; color: var(--deep); }
+.review-step.current { border-color: #5c9a77; color: var(--deep); }
+.review-section { margin-bottom: 18px; }
+.review-section-controls { display: flex; gap: 8px; }
+.review-collapse, .review-advance { min-width: 84px; height: 34px; padding: 0 13px; border: 1px solid #dce7df; border-radius: 8px; background: #fff; color: #547467; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: background-color 140ms ease, color 140ms ease; }
+.review-collapse:hover, .review-advance:hover:not(:disabled) { background: #eef5ed; color: var(--deep); }
+.review-advance:disabled { opacity: .55; cursor: default; }
+.review-collapse:focus-visible, .review-advance:focus-visible, .review-retry:focus-visible, .review-complete:focus-visible { outline: 2px solid #5c9a77; outline-offset: 2px; }
+.review-section-body { padding: 4px 22px 22px; }
+.review-prompt { margin: 0 0 16px; max-width: 640px; color: #6d8077; font-size: 13px; line-height: 1.6; }
+.review-field { display: block; margin-bottom: 15px; }
+.review-field span { display: block; margin-bottom: 6px; color: #547467; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.review-field textarea { width: 100%; max-width: 640px; padding: 11px 13px; border: 1px solid #dce7df; border-radius: 9px; background: #fff; color: var(--ink); font: inherit; font-size: 14px; line-height: 1.55; resize: vertical; }
+.review-field textarea:focus-visible { outline: 2px solid #5c9a77; outline-offset: 1px; }
+.review-field textarea:disabled { background: #f5f7f4; color: #7b8b82; }
+.review-saved-note { margin: -8px 0 18px; color: #547467; font-size: 12px; }
+.review-retry { height: 32px; padding: 0 13px; border: 1px solid #f0dfbf; border-radius: 7px; background: #fff; color: #855520; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.review-dates-inline { margin: 0; color: #547467; font-size: 12px; }
+.review-completed-note { margin: 0; color: #547467; font-size: 13px; line-height: 1.6; }
+.review-complete { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.review-history-list { margin: 0; padding: 0 22px 18px; list-style: none; }
+.review-history-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 0; border-bottom: 1px solid #eef3ee; font-size: 13px; color: var(--ink); }
+.review-history-item:last-child { border-bottom: 0; }
+.review-history-item span:last-child { color: #7b8b82; font-size: 12px; }
