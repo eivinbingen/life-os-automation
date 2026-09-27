@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, field_validator, model_validator
@@ -12,6 +12,7 @@ from life_os.models.finance import (
     SheetsError,
     YnabError,
 )
+from life_os.models.look_back import LookBackSummary as DomainLookBackSummary
 from life_os.models.notion import (
     UNSET,
     Task,
@@ -23,8 +24,10 @@ from life_os.models.notion import (
 )
 from life_os.models.weekly_review import WeeklyReview as DomainWeeklyReview
 from life_os.services.finance import format_mapping_problems
+from life_os.services.look_back import get_look_back
 from life_os.services.today import get_today
 from life_os.services.week import get_week
+from life_os.services.week import week_start as normalize_week_start
 from life_os.services.weekly_reviews import (
     ReviewConflict,
     WeeklyReviewError,
@@ -158,6 +161,7 @@ def create_app(
     create_task: Callable[[TaskCreate], Task] | None = None,
     fetch_week_events: Callable[[date, date], list[CalendarEvent]] | None = None,
     fetch_week_tasks: Callable[[date, date], TaskFetchResult] | None = None,
+    fetch_done_week_tasks: Callable[[date, date], TaskFetchResult] | None = None,
     get_finance: Callable[[str], FinanceReview] | None = None,
     reviews: WeeklyReviewRepository | None = None,
 ) -> FastAPI:
@@ -169,6 +173,32 @@ def create_app(
         return {"status": "ok"}
 
     if reviews is not None:
+
+        @app.get("/reviews/weekly/look-back")
+        def look_back_endpoint(week_start: date) -> DomainLookBackSummary:
+            if (
+                fetch_week_tasks is None
+                or fetch_done_week_tasks is None
+                or fetch_week_events is None
+            ):
+                raise HTTPException(
+                    status_code=501,
+                    detail="The look-back summary is not configured on this service.",
+                )
+            try:
+                monday = normalize_week_start(week_start)
+                return get_look_back(
+                    monday,
+                    monday + timedelta(days=6),
+                    fetch_week_tasks,
+                    fetch_done_week_tasks,
+                    fetch_week_events,
+                )
+            except (HTTPError, RequestException, ValueError) as error:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"The look-back summary could not be read: {error}",
+                ) from error
 
         @app.get("/reviews/weekly")
         def list_reviews_endpoint(week_start: date | None = None) -> list[DomainWeeklyReview]:
@@ -215,6 +245,29 @@ def create_app(
         def complete_review_endpoint(
             review_id: str, request: WeeklyReviewCompleteRequest
         ) -> DomainWeeklyReview:
+            # Capture the Look Back summary server-side before the mutation;
+            # a fetch failure passes None so a missing metric never blocks
+            # completion. Idempotent retries return the stored record without
+            # recomputing, so the saved summary stays fixed.
+            look_back_summary: dict | None = None
+            if (
+                fetch_week_tasks is not None
+                and fetch_done_week_tasks is not None
+                and fetch_week_events is not None
+            ):
+                try:
+                    stored = reviews.get(review_id)
+                    summary = get_look_back(
+                        stored.week_start,
+                        stored.week_end,
+                        fetch_week_tasks,
+                        fetch_done_week_tasks,
+                        fetch_week_events,
+                    )
+                    look_back_summary = summary.to_dict()
+                except Exception:
+                    # Any capture failure never blocks completion.
+                    look_back_summary = None
             try:
                 return reviews.complete(
                     review_id,
@@ -225,6 +278,7 @@ def create_app(
                         request.reflection if "reflection" in request.model_fields_set else None
                     ),
                     section_progress=request.section_progress,
+                    look_back_summary=look_back_summary,
                 )
             except WeeklyReviewError as error:
                 raise _review_endpoint_error(error) from error
