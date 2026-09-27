@@ -83,9 +83,27 @@ credit card payment category.
 Detailed requirements belong in their own issues; this section keeps only
 direction.
 
+### Make Life OS independently usable
+
+This is the longer-term readiness milestone, rather than "replace Notion backend."
+Build enough of the core operational workflow in the app that the user can stop
+using Life OS pages in Notion. Use roughly two weeks without relying on those
+pages as a practical readiness test; the milestone has no fixed delivery date.
+
+Until then, Notion remains scaffolding and the current source of truth. Avoid
+app-only Notion properties where possible and do not introduce a second writable
+source of truth prematurely. Narrow app-owned persistence such as Weekly Review
+V2 history does not change ownership of core Notion records.
+
+Backend migration is the final step of this milestone: freeze structural changes
+in Notion, migrate the data, make the app/database authoritative, and stop writing
+core Life OS data to Notion. Keep Notion only as an archive or for optional notes
+if desired. See the [architecture transition strategy](architecture.md#notion-transition)
+for the cutover sequence.
+
 ## Current Non-Priorities
 
-- Replacing Notion.
+- Replacing the Notion backend before the app is independently usable.
 - Bidirectional synchronization.
 - Multi-user support.
 - Mobile applications.
