@@ -108,6 +108,43 @@ def fetch_tasks_for_day(
     return fetch_tasks_for_range(token, data_source_id, day, day, page_size)
 
 
+def fetch_done_tasks_for_range(
+    token: str, data_source_id: str, start_day: date, end_day: date, page_size: int
+) -> TaskFetchResult:
+    """Fetch done tasks with a Scheduled date inside [start_day, end_day].
+
+    A separate narrow read for the Weekly Review Look Back: completion is
+    not tracked, so "scheduled in the week and now done" is the only
+    honest completed-work measure. Bounding by Scheduled avoids querying
+    unbounded done history.
+    """
+
+    done = {"property": "Done", "checkbox": {"equals": True}}
+    scheduled = [
+        {"property": "Scheduled", "date": {"on_or_after": start_day.isoformat()}},
+        {"property": "Scheduled", "date": {"on_or_before": end_day.isoformat()}},
+    ]
+    if start_day == end_day:
+        scheduled = [{"property": "Scheduled", "date": {"equals": start_day.isoformat()}}]
+    body = {"filter": {"and": [done, *scheduled]}, "page_size": page_size}
+    tasks = {}
+    while True:
+        res = requests.post(
+            url=f"{NOTION_API_URL}/data_sources/{data_source_id}/query",
+            headers=_headers(token),
+            json=body,
+        )
+        res.raise_for_status()
+        data = res.json()
+        for page in data["results"]:
+            task = _task_from_page(page)
+            tasks.setdefault(task.id, task)
+        if not data["has_more"]:
+            break
+        body["start_cursor"] = data["next_cursor"]
+    return _resolve_project_names(token, list(tasks.values()))
+
+
 def _resolve_project_names(token: str, tasks: list[Task]) -> TaskFetchResult:
     project_names: dict[str, str | None] = {}
     failed_lookups = 0

@@ -311,3 +311,66 @@ def test_update_task_failure_raises_request_error(monkeypatch):
         pass
     else:
         raise AssertionError("expected RequestException")
+
+
+def test_done_tasks_filter_requires_done_and_scheduled_within_range(monkeypatch):
+    from copy import deepcopy
+
+    bodies = []
+
+    def done_task(task_id: str, scheduled: str):
+        page = notion_task(task_id, None)
+        page["properties"]["Done"] = {"checkbox": True}
+        page["properties"]["Scheduled"] = {"date": {"start": scheduled}}
+        return page
+
+    def post(**kwargs):
+        bodies.append(deepcopy(kwargs["json"]))
+        return FakeResponse(
+            {
+                "results": [done_task("one", "2026-09-16"), done_task("two", "2026-09-16")],
+                "has_more": False,
+            }
+        )
+
+    def get_project(**kwargs):
+        return FakeResponse(
+            {
+                "properties": {
+                    "Project name": {
+                        "type": "title",
+                        "title": [{"plain_text": "Life OS"}],
+                    }
+                }
+            }
+        )
+
+    monkeypatch.setattr(notion_tasks.requests, "post", post)
+    monkeypatch.setattr(notion_tasks.requests, "get", get_project)
+
+    result = notion_tasks.fetch_done_tasks_for_range(
+        "secret", "tasks", date(2026, 9, 14), date(2026, 9, 20), 100
+    )
+
+    query = bodies[0]["filter"]
+    # No OR wrapper: a single AND of Done and Scheduled bounds.
+    assert "or" not in query
+    assert {"property": "Done", "checkbox": {"equals": True}} in query["and"]
+    assert {"property": "Scheduled", "date": {"on_or_after": "2026-09-14"}} in query["and"]
+    assert {"property": "Scheduled", "date": {"on_or_before": "2026-09-20"}} in query["and"]
+    assert sorted(task.id for task in result.tasks) == ["one", "two"]
+    assert result.warnings == []
+
+
+def test_done_tasks_day_fetch_uses_exact_scheduled_day(monkeypatch):
+    bodies = []
+
+    def post(**kwargs):
+        bodies.append(kwargs["json"])
+        return FakeResponse({"results": [], "has_more": False})
+
+    monkeypatch.setattr(notion_tasks.requests, "post", post)
+    notion_tasks.fetch_done_tasks_for_range(
+        "secret", "tasks", date(2026, 9, 16), date(2026, 9, 16), 100
+    )
+    assert {"property": "Scheduled", "date": {"equals": "2026-09-16"}} in bodies[0]["filter"]["and"]
