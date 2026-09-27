@@ -2,8 +2,10 @@ import { connection } from "next/server";
 
 import { startOfWeek } from "../../date-utils";
 import {
+  fetchLookBack,
   fetchReviewByWeek,
   startReview,
+  type LookBackSummary,
   type ReviewRecord,
 } from "./review-actions";
 import { ReviewBoard } from "./review-board";
@@ -45,11 +47,20 @@ export default async function WeeklyReviewPage({
     : [];
   const historyError = historyResult.ok ? null : historyResult.error;
 
+  // A completed record renders its fixed saved summary from the record
+  // itself, so live look-back data is only needed for drafts.
+  let lookBack: { ok: true; summary: LookBackSummary } | { ok: false; error: string } | null = null;
+  if (review.status !== "completed") {
+    const lookBackResult = await fetchLookBack(weekStart);
+    lookBack = lookBackResult;
+  }
+
   return (
     <ReviewBoard
       initialReview={review}
       history={history}
       historyError={historyError}
+      lookBack={lookBack}
     />
   );
 }

@@ -1,12 +1,59 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ReviewRecord } from "./review-actions";
+import type { LookBackSummary, ReviewRecord } from "./review-actions";
 import { ReviewBoard } from "./review-board";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+const summary: LookBackSummary = {
+  week_start: "2026-09-14",
+  week_end: "2026-09-20",
+  timezone: "Europe/Zurich",
+  captured_at: "2026-09-21T09:00:00+02:00",
+  metrics: [
+    {
+      key: "tasks_scheduled_done",
+      label: "Tasks scheduled that week and now done",
+      definition:
+        "Unique tasks with a Scheduled date inside the reviewed week whose Done checkbox is now checked.",
+      available: true,
+      count: 2,
+    },
+    {
+      key: "completion_in_week",
+      label: "Tasks completed during that week",
+      definition: "Unavailable: tasks have no completion timestamp; last-edited time is not completion time.",
+      available: false,
+      count: null,
+    },
+    {
+      key: "events_in_week",
+      label: "Calendar events that week",
+      definition: "Unique calendar events with a start inside the reviewed week.",
+      available: true,
+      count: 3,
+    },
+    {
+      key: "projects_touched",
+      label: "Projects of tasks scheduled that week",
+      definition: "Distinct project names on the tasks in the two measures above.",
+      available: true,
+      count: 1,
+    },
+  ],
+  statuses: [
+    { name: "Notion", ok: true, error: null },
+    { name: "Calendar", ok: true, error: null },
+  ],
+  completed_tasks: [
+    { id: "c1", name: "Shipped the slice", project_name: "Life OS" },
+    { id: "c2", name: "Wrote the docs", project_name: "Life OS" },
+  ],
+  unfinished_tasks: [{ id: "u1", name: "Old task", project_name: null }],
+};
 
 const draft: ReviewRecord = {
   id: "review-1",
@@ -23,6 +70,7 @@ const draft: ReviewRecord = {
   section_progress: { look_back: false, clean_up: false, direction: false, ahead: false },
   wins: "",
   reflection: "",
+  look_back_summary: null,
 };
 
 const completed: ReviewRecord = {
@@ -191,5 +239,121 @@ describe("Guided weekly review", () => {
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("could not load review history");
     expect(screen.getByText("Completed reviews")).toBeTruthy();
+  });
+});
+
+describe("Look Back summary", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function openLookBack() {
+    const section = screen.getByRole("heading", { name: /Look Back/ }).closest("section");
+    const expand = section?.querySelector(".review-collapse") as HTMLElement;
+    if (expand?.getAttribute("aria-expanded") === "false") {
+      expand.click();
+    }
+  }
+
+  it("renders the live summary with honest metric labels and inspectable lists", () => {
+    render(
+      <ReviewBoard
+        initialReview={draft}
+        history={[]}
+        lookBack={{ ok: true, summary }}
+      />,
+    );
+    openLookBack();
+    const section = screen.getByRole("heading", { name: /Look Back/ }).closest("section");
+    expect(section?.textContent).toContain("Tasks scheduled that week and now done");
+    expect(section?.textContent).toContain("no completion timestamp");
+    expect(section?.textContent).toContain("N/A");
+    const completedList = screen.getByText(/Completed work \(2\)/).closest("details");
+    expect(completedList?.textContent).toContain("Shipped the slice");
+    const unfinishedList = screen.getByText(/Unfinished work \(1\)/).closest("details");
+    expect(unfinishedList?.textContent).toContain("Old task");
+  });
+
+  it("shows an unavailable state with retry when the live fetch fails", () => {
+    render(
+      <ReviewBoard
+        initialReview={draft}
+        history={[]}
+        lookBack={{ ok: false, error: "The look-back summary could not be loaded. Please try again." }}
+      />,
+    );
+    openLookBack();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("could not be loaded");
+  });
+
+  it("shows zero counts as empty, distinct from unavailable", () => {
+    render(
+      <ReviewBoard
+        initialReview={draft}
+        history={[]}
+        lookBack={{
+          ok: true,
+          summary: {
+            ...summary,
+            metrics: summary.metrics.map((metric) =>
+              metric.available ? { ...metric, count: 0 } : metric,
+            ),
+            completed_tasks: [],
+            unfinished_tasks: [],
+          },
+        }}
+      />,
+    );
+    openLookBack();
+    expect(screen.getByText(/Completed work \(0\)/)).toBeTruthy();
+    expect(screen.getByText(/No tasks were scheduled that week and are now done/)).toBeTruthy();
+    const unavailable = screen.getAllByText("N/A");
+    expect(unavailable.length).toBe(1);
+  });
+
+  it("shows partial fetch warnings when a source failed", () => {
+    render(
+      <ReviewBoard
+        initialReview={draft}
+        history={[]}
+        lookBack={{
+          ok: true,
+          summary: {
+            ...summary,
+            statuses: [{ name: "Calendar", ok: false, error: "down" }],
+          },
+        }}
+      />,
+    );
+    openLookBack();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("Calendar is unavailable");
+  });
+
+  it("renders the fixed saved summary for a completed record", () => {
+    render(
+      <ReviewBoard
+        initialReview={{ ...draft, status: "completed", completed_at: "2026-09-21T18:00:00Z", look_back_summary: summary }}
+        history={[]}
+        lookBack={null}
+      />,
+    );
+    openLookBack();
+    const section = screen.getByRole("heading", { name: /Look Back/ }).closest("section");
+    expect(section?.textContent).toContain("fixed history");
+    expect(section?.textContent).toContain("Shipped the slice");
+  });
+
+  it("degrades gracefully when a completed record has no saved summary", () => {
+    render(
+      <ReviewBoard
+        initialReview={{ ...draft, status: "completed", completed_at: "2026-09-21T18:00:00Z", look_back_summary: null }}
+        history={[]}
+        lookBack={null}
+      />,
+    );
+    openLookBack();
+    expect(screen.getByText(/look-back summary is unavailable right now/)).toBeTruthy();
   });
 });

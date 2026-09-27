@@ -6,7 +6,11 @@ import {
   formatDay,
   shiftDay,
 } from "../../date-utils";
-import type { ReviewRecord, SectionProgress } from "./review-actions";
+import type {
+  LookBackSummary,
+  ReviewRecord,
+  SectionProgress,
+} from "./review-actions";
 
 const SECTIONS = [
   { key: "look_back", title: "Look Back", question: "What happened?" },
@@ -86,14 +90,122 @@ function ReviewSection({
   );
 }
 
+function LookBackBody({
+  savedSummary,
+  live,
+}: {
+  savedSummary: LookBackSummary | null;
+  live: { ok: true; summary: LookBackSummary } | { ok: false; error: string } | null;
+}) {
+  // A completed review renders its fixed saved summary; live data only
+  // applies to drafts.
+  if (savedSummary) {
+    return <SummaryView summary={savedSummary} saved />;
+  }
+  if (live === null) {
+    return (
+      <p className="review-prompt">
+        The look-back summary is unavailable right now. Your manual wins are still
+        saved with the review.
+      </p>
+    );
+  }
+  if (!live.ok) {
+    return (
+      <div className="integration-alert" role="alert">
+        <span className="alert-symbol" aria-hidden="true">!</span>
+        <span>{live.error}</span>
+      </div>
+    );
+  }
+  return <SummaryView summary={live.summary} saved={false} />;
+}
+
+function SummaryView({ summary, saved }: { summary: LookBackSummary; saved: boolean }) {
+  const degraded = summary.metrics.some((metric) => !metric.available);
+  return (
+    <div className="look-back-summary">
+      <div className="review-metrics">
+        {summary.metrics.map((metric) => (
+          <div key={metric.key} className={`review-metric${metric.available ? "" : " unavailable"}`}>
+            <span className="review-metric-count" aria-label={metric.label}>
+              {metric.available ? metric.count : "N/A"}
+            </span>
+            <span className="review-metric-label">{metric.label}</span>
+            <span className="review-metric-definition">{metric.definition}</span>
+          </div>
+        ))}
+      </div>
+      <details className="review-task-list">
+        <summary>
+          Completed work ({summary.completed_tasks.length}) — scheduled that week and now done
+        </summary>
+        {summary.completed_tasks.length === 0 ? (
+          <p className="review-empty-note">No tasks were scheduled that week and are now done.</p>
+        ) : (
+          <ul>
+            {summary.completed_tasks.map((task) => (
+              <li key={task.id}>
+                {task.name}
+                {task.project_name ? <span className="review-task-project"> · {task.project_name}</span> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </details>
+      <details className="review-task-list">
+        <summary>Unfinished work ({summary.unfinished_tasks.length})</summary>
+        {summary.unfinished_tasks.length === 0 ? (
+          <p className="review-empty-note">No unfinished work was scheduled that week.</p>
+        ) : (
+          <ul>
+            {summary.unfinished_tasks.map((task) => (
+              <li key={task.id}>
+                {task.name}
+                {task.project_name ? <span className="review-task-project"> · {task.project_name}</span> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </details>
+      {summary.statuses.some((status) => !status.ok) && (
+        <div className="integration-alert" role="alert">
+          <span className="alert-symbol" aria-hidden="true">!</span>
+          <span>
+            {summary.statuses
+              .filter((status) => !status.ok)
+              .map((status) => `${status.name} is unavailable.`)
+              .join(" ")}
+          </span>
+        </div>
+      )}
+      <p className="review-saved-meta">
+        {saved ? (
+          <>
+            Saved summary captured {formatTimestamp(summary.captured_at, summary.timezone)}. This
+            record is fixed history; live changes do not rewrite it.
+          </>
+        ) : (
+          <>
+            Live summary captured {formatTimestamp(summary.captured_at, summary.timezone)}.
+            {degraded ? " Some sources are unavailable." : ""}
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
 export function ReviewBoard({
   initialReview,
   history,
   historyError,
+  lookBack,
 }: {
   initialReview: ReviewRecord;
   history: ReviewRecord[];
   historyError?: string | null;
+  lookBack?: { ok: true; summary: LookBackSummary } | { ok: false; error: string } | null;
 }) {
   const [review, setReview] = useState(initialReview);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({ look_back: true, commit: true });
@@ -243,9 +355,13 @@ export function ReviewBoard({
         onToggle={() => toggleSection("look_back")}
         onPass={() => markPassed("look_back")}
       >
+        <LookBackBody
+          savedSummary={review.look_back_summary}
+          live={lookBack ?? null}
+        />
         <p className="review-prompt">
-          Record what mattered this week in your own words. A per-day activity summary arrives
-          in a later slice; your manual wins are already saved with the review.
+          Record what mattered this week in your own words; your manual wins are saved
+          with the review.
         </p>
         <label className="review-field">
           <span>Wins</span>
