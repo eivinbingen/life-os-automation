@@ -7,8 +7,8 @@ Area → Goal → Project → Task
 ```
 
 - **Area:** A continuing part of life without a completion date, such as Studies, Finance, or Health.
-- **Goal:** A measurable outcome connected to an area.
-- **Project:** A finite body of work that contributes to a goal.
+- **Goal:** A measurable outcome connected to an area. Goal completion is `Status = Done` in the Goals schema (options: Not Started, Active, Failed, Done); there is no description property, so a goal's context is its name, status, area, target date, and related projects (see `docs/notion-goals-schema.md`).
+- **Project:** A finite body of work that contributes to a goal. The Projects schema has no Goal relation — a project's goal context is read-only via the `Resolved Goal` formula, and goal↔project links are made on the goal side.
 - **Task:** A concrete action that may belong to a project.
 
 The Notion Tasks `Status` property is a read-only formula over `Done`/`Due`
@@ -42,6 +42,12 @@ Relationships should provide context automatically:
 - A project can inherit its area through its goal.
 - Direct relationships remain available for items that do not belong to the complete hierarchy.
 - Explicit relationships should take precedence when appropriate.
+
+In the live schema, inherited goal/area context on tasks and projects is
+computed by read-only formulas (`Resolved Goal`, `Resolved Area`,
+`Inherited Goal`) and must never be written; the writable relations are
+Goal→Area, Goal→Projects (goal side), Project→Tasks (task side), and
+Task→Course (task side). See `docs/notion-goals-schema.md`.
 
 ## Scheduling
 
