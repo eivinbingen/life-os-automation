@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 
 import { formatItemDate } from "../../date-utils";
 import {
@@ -84,10 +85,15 @@ export function ProjectDetailBoard({ project }: { project: ProjectDetail }) {
           <div className="overview-item">
             <span>Goal</span>
             <strong>
-              {project.goal_name ??
-                (project.goal_id
-                  ? "Unavailable"
-                  : project.resolved_goal ?? "—")}
+              {project.goal_name ? (
+                <Link className="task-project-link" href={`/goals/${project.goal_id}`}>
+                  {project.goal_name}
+                </Link>
+              ) : project.goal_id ? (
+                "Unavailable"
+              ) : (
+                project.resolved_goal ?? "—"
+              )}
             </strong>
           </div>
           <div className="overview-item">

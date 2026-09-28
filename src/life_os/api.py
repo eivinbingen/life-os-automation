@@ -19,6 +19,7 @@ from life_os.models.finance import (
     SheetsError,
     YnabError,
 )
+from life_os.models.goal import GoalDetail as DomainGoalDetail
 from life_os.models.look_back import LookBackSummary as DomainLookBackSummary
 from life_os.models.notion import (
     UNSET,
@@ -33,6 +34,7 @@ from life_os.models.project import ProjectDetail as DomainProjectDetail
 from life_os.models.weekly_review import WeeklyReview as DomainWeeklyReview
 from life_os.services.clean_up import get_clean_up
 from life_os.services.finance import format_mapping_problems
+from life_os.services.goals import GoalNotFound
 from life_os.services.look_back import get_look_back
 from life_os.services.projects import ProjectNotFound
 from life_os.services.today import get_today
@@ -229,6 +231,8 @@ def create_app(
     get_finance: Callable[[str], FinanceReview] | None = None,
     fetch_studies: Callable[[], DomainStudiesOverview] | None = None,
     fetch_project_detail: Callable[[str], DomainProjectDetail] | None = None,
+    fetch_goal_detail: Callable[[str], DomainGoalDetail] | None = None,
+    fetch_active_goals: Callable[[], list] | None = None,
     reviews: WeeklyReviewRepository | None = None,
 ) -> FastAPI:
 
@@ -454,6 +458,39 @@ def create_app(
                 raise HTTPException(
                     status_code=502,
                     detail=f"The project could not be read: {error}",
+                ) from error
+
+    if fetch_goal_detail is not None:
+
+        @app.get("/goals/{goal_id}")
+        def goal_endpoint(goal_id: str) -> DomainGoalDetail:
+            try:
+                return fetch_goal_detail(goal_id)
+            except GoalNotFound as error:
+                raise HTTPException(
+                    status_code=404, detail="This goal could not be found."
+                ) from error
+            except Exception as error:
+                # The service degrades per source; a raised error here means
+                # the whole read failed unexpectedly.
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"The goal could not be read: {error}",
+                ) from error
+
+    if fetch_active_goals is not None:
+
+        @app.get("/goals/active")
+        def active_goals_endpoint() -> list:
+            try:
+                return fetch_active_goals()
+            except Exception as error:
+                # Live direction data is labeled unavailable upstream rather
+                # than blocking; a raised error here means the whole read
+                # failed unexpectedly.
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"The active goals could not be read: {error}",
                 ) from error
 
     if create_task is not None:
