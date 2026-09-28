@@ -81,8 +81,9 @@ def main():
             page_size=100,
         )
 
-    projects_data_source_id = os.getenv("NOTION_PROJECTS_DATA_SOURCE_ID")
-
+    # The project detail read needs only the token and the tasks data
+    # source (project page + tasks-by-project query), so it is enabled
+    # whenever Today works; the optional projects env var is unused.
     def fetch_project_detail(project_id: str):
         return _get_project_detail(
             project_id,
@@ -108,9 +109,7 @@ def main():
         fetch_done_week_tasks,
         get_finance=get_finance,
         fetch_studies=fetch_studies,
-        fetch_project_detail=(
-            fetch_project_detail if projects_data_source_id else None
-        ),
+        fetch_project_detail=fetch_project_detail,
         reviews=reviews,
     )
     uvicorn.run(app, host="127.0.0.1", port=8000)

@@ -2,10 +2,16 @@ from datetime import date, datetime, timedelta
 
 import requests
 
-from life_os.integrations.notion_tasks import (
+from life_os.integrations.notion_common import (
     NOTION_API_URL,
-    _headers,
-    _page_title,
+)
+from life_os.integrations.notion_common import (
+    headers as _headers,
+)
+from life_os.integrations.notion_common import (
+    page_title as _page_title,
+)
+from life_os.integrations.notion_tasks import (
     fetch_tasks_for_range,
 )
 from life_os.models.courses import Course, CourseScheduleItem, StudiesOverview

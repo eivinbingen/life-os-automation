@@ -12,7 +12,6 @@ import {
 
 import type { RefreshResult, Task, Today } from "./actions";
 import { refreshToday } from "./actions";
-import Link from "next/link";
 import { DayControls } from "./day-controls";
 import {
   APP_TIME_ZONE,
@@ -23,6 +22,7 @@ import {
 import { TaskCapture } from "./task-capture";
 import { TaskCheckbox } from "./task-checkbox";
 import { TaskEditPanel } from "./task-edit";
+import { TaskProjectLink } from "./task-project-link";
 import {
   OpenTaskCount,
   TaskCompletionProvider,
@@ -129,13 +129,7 @@ function TaskList({
             {task.project_name && (
               <span className="task-project">
                 <span>Project</span>
-                {task.project_id ? (
-                  <Link className="task-project-link" href={`/projects/${task.project_id}`}>
-                    {task.project_name}
-                  </Link>
-                ) : (
-                  task.project_name
-                )}
+                <TaskProjectLink projectId={task.project_id} projectName={task.project_name} />
               </span>
             )}
             {task[dateField] && (

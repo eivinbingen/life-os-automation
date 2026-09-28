@@ -16,7 +16,6 @@ export default async function ProjectPage({
   const result = await fetchProjectDetail(id);
 
   if (!result.ok) {
-    const notFound = result.error.includes("could not be found");
     return (
       <div className="service-error-wrap">
         <section
@@ -25,9 +24,11 @@ export default async function ProjectPage({
           aria-labelledby="project-error-title"
         >
           <h1 id="project-error-title">
-            {notFound ? "Project not found" : "Project is unavailable"}
+            {result.error.kind === "not_found"
+              ? "Project not found"
+              : "Project is unavailable"}
           </h1>
-          <p className="service-error-copy">{result.error}</p>
+          <p className="service-error-copy">{result.error.message}</p>
           <a className="retry-button weekly-retry-link" href={`/projects/${id}`}>
             Try again
           </a>

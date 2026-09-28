@@ -1,8 +1,14 @@
 from collections.abc import Callable
 
-from life_os.integrations.notion_tasks import _page_title
+import requests
+
+from life_os.integrations.notion_common import page_title as _page_title
 from life_os.models.notion import Task, TaskFetchResult
 from life_os.models.project import ProjectDetail
+
+
+class ProjectNotFound(Exception):
+    """The project page does not exist (Notion returned 404)."""
 
 
 def _normalize_project(page: dict) -> tuple:
@@ -48,7 +54,9 @@ def get_project_detail(
 
     A failed source never hides the project: an unreadable status renders
     as unavailable, a failed goal lookup as neutral missing context, and
-    the tasks list as empty with a warning.
+    the tasks list as empty with a warning. A genuinely missing project
+    (Notion 404) is not a degraded read — it raises ProjectNotFound so
+    the API can answer 404 instead of an empty shell.
     """
 
     statuses: list[dict] = []
@@ -62,11 +70,16 @@ def get_project_detail(
     deadline = None
     try:
         page = fetch_project(project_id)
+    except requests.HTTPError as error:
+        if error.response is not None and error.response.status_code == 404:
+            raise ProjectNotFound(project_id) from error
+        statuses.append({"name": "Notion", "ok": False, "error": str(error)})
+    except Exception as error:
+        statuses.append({"name": "Notion", "ok": False, "error": str(error)})
+    else:
         name, status, status_available, goal_id, resolved_goal, deadline = (
             _normalize_project(page)
         )
-    except Exception as error:
-        statuses.append({"name": "Notion", "ok": False, "error": str(error)})
 
     goal_name = None
     if goal_id:

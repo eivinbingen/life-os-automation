@@ -1,14 +1,15 @@
-
 import requests
 
+from life_os.integrations.notion_common import (
+    NOTION_API_URL,
+)
+from life_os.integrations.notion_common import (
+    headers as _headers,
+)
 from life_os.integrations.notion_tasks import (
-    _headers,
     _task_from_page,
 )
 from life_os.models.notion import Task, TaskFetchResult
-
-NOTION_API_URL = "https://api.notion.com/v1"
-NOTION_VERSION = "2026-03-11"
 
 
 def fetch_project(token: str, project_id: str) -> dict:

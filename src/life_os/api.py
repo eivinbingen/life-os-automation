@@ -34,6 +34,7 @@ from life_os.models.weekly_review import WeeklyReview as DomainWeeklyReview
 from life_os.services.clean_up import get_clean_up
 from life_os.services.finance import format_mapping_problems
 from life_os.services.look_back import get_look_back
+from life_os.services.projects import ProjectNotFound
 from life_os.services.today import get_today
 from life_os.services.week import get_week
 from life_os.services.week import week_start as normalize_week_start
@@ -443,6 +444,10 @@ def create_app(
         def project_endpoint(project_id: str) -> DomainProjectDetail:
             try:
                 return fetch_project_detail(project_id)
+            except ProjectNotFound as error:
+                raise HTTPException(
+                    status_code=404, detail="This project could not be found."
+                ) from error
             except Exception as error:
                 # The service degrades per source; a raised error here means
                 # the whole read failed unexpectedly.

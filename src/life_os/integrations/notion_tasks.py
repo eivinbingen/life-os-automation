@@ -4,10 +4,14 @@ from os import getenv
 import requests
 from dotenv import load_dotenv
 
+from life_os.integrations.notion_common import (
+    NOTION_API_URL,
+    fetch_page_title,
+)
+from life_os.integrations.notion_common import (
+    headers as _headers,
+)
 from life_os.models.notion import UNSET, Task, TaskCreate, TaskFetchResult, TaskUpdate
-
-NOTION_API_URL = "https://api.notion.com/v1"
-NOTION_VERSION = "2026-03-11"
 
 
 def fetch_active_projects(token: str, data_source_id: str, page_size: int) -> list[Task]:
@@ -43,29 +47,8 @@ def fetch_active_projects(token: str, data_source_id: str, page_size: int) -> li
     return list(projects.values())
 
 
-def _headers(token: str) -> dict[str, str]:
-    return {
-        "Authorization": f"Bearer {token}",
-        "Notion-Version": NOTION_VERSION,
-        "Content-Type": "application/json",
-    }
-
-
-def _page_title(notion_page: dict) -> str | None:
-    for prop in notion_page.get("properties", {}).values():
-        if prop.get("type") == "title":
-            title = "".join(part.get("plain_text", "") for part in prop.get("title", []))
-            return title or None
-    return None
-
-
 def _fetch_project_name(token: str, project_id: str) -> str | None:
-    response = requests.get(
-        url=f"{NOTION_API_URL}/pages/{project_id}",
-        headers=_headers(token),
-    )
-    response.raise_for_status()
-    return _page_title(response.json())
+    return fetch_page_title(token, project_id)
 
 
 def _task_from_page(notion_page: dict) -> Task:

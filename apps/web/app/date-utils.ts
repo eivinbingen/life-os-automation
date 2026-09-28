@@ -85,3 +85,17 @@ export function formatDay(day: string) {
     timeZone: "UTC",
   }).format(new Date(`${day}T12:00:00Z`));
 }
+
+/** Formats a Notion task date value; a date-time keeps its wall-clock time. */
+export function formatItemDate(value: string | null) {
+  if (!value) return null;
+  const datePart = value.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null;
+  const formatted = new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(new Date(`${datePart}T12:00:00Z`));
+  // Notion's date-time value contains the wall-clock time entered for the task.
+  return value.includes("T") ? `${formatted} · ${value.slice(11, 16)}` : formatted;
+}

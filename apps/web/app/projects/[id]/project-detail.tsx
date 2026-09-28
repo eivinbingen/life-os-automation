@@ -2,25 +2,13 @@
 
 import { useMemo } from "react";
 
+import { formatItemDate } from "../../date-utils";
 import {
   OpenTaskCount,
   TaskCompletionProvider,
 } from "../../task-completion";
 import { TaskCheckbox } from "../../task-checkbox";
 import type { ProjectDetail } from "../../projects-actions";
-
-function formatTaskDateTime(value: string | null) {
-  if (!value) return null;
-  const datePart = value.slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null;
-  const formatted = new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  }).format(new Date(`${datePart}T12:00:00Z`));
-  // Notion's date-time value contains the wall-clock time entered for the task.
-  return value.includes("T") ? `${formatted} · ${value.slice(11, 16)}` : formatted;
-}
 
 // Compact horizontal date for the overview strip, e.g. "19 Oct 2026" —
 // the long weekday format wraps badly in a constrained strip.
@@ -123,7 +111,7 @@ export function ProjectDetailBoard({ project }: { project: ProjectDetail }) {
           ) : (
             <ul className="task-list">
               {sorted.map((task) => {
-                const when = task.scheduled ?? task.due;
+                const when = formatItemDate(task.scheduled ?? task.due);
                 return (
                   <li className="task-row" key={task.id}>
                     <TaskCheckbox taskId={task.id} taskName={task.name} />
@@ -131,7 +119,7 @@ export function ProjectDetailBoard({ project }: { project: ProjectDetail }) {
                       <span className="task-name">{task.name}</span>
                       {when && (
                         <span className="task-meta">
-                          {(task.scheduled ? "Scheduled " : "Due ") + formatTaskDateTime(when)}
+                          {(task.scheduled ? "Scheduled " : "Due ") + when}
                         </span>
                       )}
                     </div>
