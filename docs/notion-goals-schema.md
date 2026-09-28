@@ -48,13 +48,18 @@ its Name, Status, Area, Target Date, and related projects.
 | `Name` | title | Project name |
 | `Status` | status | Options: Planned, Waiting, **Active**, Dropped, Done |
 | `Deadline` | date | |
+| `Goal` | relation | Project → Goals; synced with the goal-side `Projects` relation |
+| `Direct Area` | relation | Project → Areas; directly writable |
 | `Courses` | relation | Project → Courses; directly writable |
 | `Tasks` | relation | Project → Tasks |
 | `Resolved Goal` / `Resolved Area` | formula | Read-only inherited context |
 | `Open Tasks` / `Scheduled Tasks` / `Progress` / `Project Attention` | formula/rollup | Read-only |
 
-There is **no Goal relation on Projects**. A project's goal context comes
-only from the read-only `Resolved Goal` formula.
+An initial inspection on 2026-09-28 missed the `Goal` and `Direct Area`
+relations; a same-day re-inspection against live pages confirmed both
+exist and that goal pages carry populated `Projects` relations. The
+goal↔project relation is synced bidirectionally: writing either side
+updates both.
 
 ## Tasks properties (goal-relevant)
 
@@ -66,9 +71,9 @@ PR #40 / the Look Back slice.
 ## Inheritance and precedence
 
 - The documented hierarchy is Area → Goal → Project → Task. In practice,
-  the writable relations are Goal→Area (goal side), Goal→Projects (goal
-  side), Project→Tasks (task side `Project` relation), Task→Course (task
-  side `Course` relation).
+  the writable relations are Goal→Area (goal side), Goal↔Projects (synced
+  both sides), Project→Tasks (task side `Project` relation), Task→Course
+  (task side `Course` relation).
 - Goal/Area context on tasks and projects is derived by formulas
   (`Resolved Goal`, `Resolved Area`, `Inherited Goal`) — **read-only,
   never written**.
@@ -80,15 +85,15 @@ PR #40 / the Look Back slice.
 | Gate | Answer |
 | --- | --- |
 | G1 goals active status | `Status = Active` (verified live 2026-09-28) |
-| G2 goal↔project relation | Goal-side `Projects` relation; project-side has no Goal relation. Joins are made goal-side, mirroring the courses task-side precedent. |
+| G2 goal↔project relation | Synced bidirectionally: goal-side `Projects` relation and project-side `Goal` relation (verified against live pages 2026-09-28). Goal-side reads are primary; either side can be written. |
 | G3 goal creation fields | `Name` (title, required); `Status` defaults to Not Started; optional `Area`, `Target Date`, `Courses`, `Projects` |
 | G4 goal completion | `Status = Done` (not "Completed") |
-| G5 writable relations on Projects | `Courses` only. No goal relation → project forms cannot set a goal; goal context on projects is formula-resolved and read-only. |
+| G5 writable relations on Projects | `Goal`, `Direct Area`, and `Courses` are all directly writable; project forms can prefill a goal from context. |
 | G6 goals description property | None exists. Editable goal set: Name, Status, Area, Target Date. |
 
 Consequence for #49/#45: **Complete Goal = `Status = Done`, status-only,
-no cascade.** Project forms cannot prefill or set a goal; instead, projects
-are added to a goal via the goal-side `Projects` relation.
+no cascade.** Projects can be created/edited with a visible goal prefill;
+linking a project to a goal via either side syncs both.
 
 ## Unverified assumptions
 
