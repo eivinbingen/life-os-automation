@@ -112,11 +112,24 @@ cannot traverse relations dynamically, so they resolve it eagerly as plain
 strings. They are Notion-internal implementation details, **not part of the
 domain contract**.
 
-When Life OS needs inherited context, it derives it from the writable
-relations in the domain layer — direct relation first, then through the
-parent (e.g. a project's area is its `Direct Area` if set, otherwise its
-goal's `Area`). Any future store only has to provide the relations, which
-is what makes a transition away from Notion cheap. Reading a formula is
-acceptable as a display-only optimization, but navigation and logic must
-rely on real relations (the project detail view reads the project-side
-`Goal` relation, never `Resolved Goal`).
+**The standard pattern for the whole hierarchy (Area → Goal → Project →
+Task):** every entity reads both its direct relation and the resolved
+fallback, preferring the direct side; writes always populate the direct
+side.
+
+- **Reads**: prefer the real relation (it carries an ID, so it is
+  navigation-ready); fall back to the resolved formula string when the
+  relation is empty. Task → goal/area reads the `Project` relation with
+  `Resolved Goal`/`Resolved Area`/`Inherited Goal` as display-only
+  fallback; Project → goal/area reads the `Goal`/`Direct Area` relations
+  with `Resolved Goal`/`Resolved Area` as fallback; Goal → area reads the
+  `Area` relation (no higher level, no fallback).
+- **Writes**: always write the direct relation — task→`Project`,
+  project→`Goal` (plus the goal-side `Projects` relation, since the two
+  sides do not auto-sync), goal→`Area`. Records the app touches become
+  direct-linked over time, making the fallback increasingly rare.
+- **Migration**: any future store only has to provide the relations,
+  which is what makes a transition away from Notion cheap. Reading a
+  formula is acceptable as a display-only optimization, but navigation
+  and logic must rely on real relations (the project detail view reads
+  the project-side `Goal` relation, never `Resolved Goal`, for its link).
