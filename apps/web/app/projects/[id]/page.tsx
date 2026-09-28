@@ -18,26 +18,21 @@ export default async function ProjectPage({
   if (!result.ok) {
     const notFound = result.error.includes("could not be found");
     return (
-      <>
-        <header className="topbar">
-          <span className="topbar-label">PROJECT</span>
-        </header>
-        <div className="service-error-wrap">
-          <section
-            className="service-error"
-            role="alert"
-            aria-labelledby="project-error-title"
-          >
-            <h1 id="project-error-title">
-              {notFound ? "Project not found" : "Project is unavailable"}
-            </h1>
-            <p className="service-error-copy">{result.error}</p>
-            <a className="retry-button weekly-retry-link" href={`/projects/${id}`}>
-              Try again
-            </a>
-          </section>
-        </div>
-      </>
+      <div className="service-error-wrap">
+        <section
+          className="service-error"
+          role="alert"
+          aria-labelledby="project-error-title"
+        >
+          <h1 id="project-error-title">
+            {notFound ? "Project not found" : "Project is unavailable"}
+          </h1>
+          <p className="service-error-copy">{result.error}</p>
+          <a className="retry-button weekly-retry-link" href={`/projects/${id}`}>
+            Try again
+          </a>
+        </section>
+      </div>
     );
   }
 

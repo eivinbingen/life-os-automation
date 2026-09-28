@@ -2,7 +2,6 @@
 
 import { useMemo } from "react";
 
-import { formatDay } from "../../date-utils";
 import {
   OpenTaskCount,
   TaskCompletionProvider,
@@ -23,6 +22,20 @@ function formatTaskDateTime(value: string | null) {
   return value.includes("T") ? `${formatted} · ${value.slice(11, 16)}` : formatted;
 }
 
+// Compact horizontal date for the overview strip, e.g. "19 Oct 2026" —
+// the long weekday format wraps badly in a constrained strip.
+function formatStripDate(value: string | null) {
+  if (!value) return null;
+  const datePart = value.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null;
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${datePart}T12:00:00Z`));
+}
+
 export function ProjectDetailBoard({ project }: { project: ProjectDetail }) {
   const failed = project.statuses.filter((status) => !status.ok);
   const sorted = useMemo(
@@ -36,10 +49,6 @@ export function ProjectDetailBoard({ project }: { project: ProjectDetail }) {
   return (
     <TaskCompletionProvider tasks={project.tasks}>
       <div className="dashboard-content">
-        <header className="topbar">
-          <span className="topbar-label">PROJECT</span>
-        </header>
-
         <section className="intro" aria-labelledby="project-title">
           <div>
             <p className="eyebrow"><span className="eyebrow-line" /> PROJECT</p>
@@ -69,32 +78,32 @@ export function ProjectDetailBoard({ project }: { project: ProjectDetail }) {
           </div>
         )}
 
-        <div className="overview-strip" aria-label="Project at a glance">
+        <div className="overview-strip cols-4" aria-label="Project at a glance">
           <div className="overview-item">
+            <span>Open tasks</span>
             <strong>
               <OpenTaskCount taskIds={project.tasks.map((task) => task.id)} />
             </strong>
-            <span>Open tasks</span>
           </div>
           <div className="overview-item">
+            <span>Status</span>
             <strong>
               {project.status_available
                 ? project.status ?? "—"
                 : "Unavailable"}
             </strong>
-            <span>Status</span>
           </div>
           <div className="overview-item">
+            <span>Goal</span>
             <strong>
               {project.goal_name ?? (project.goal_id ? "Unavailable" : "—")}
             </strong>
-            <span>Goal</span>
           </div>
           <div className="overview-item">
-            <strong>
-              {project.deadline ? formatDay(project.deadline) : "—"}
-            </strong>
             <span>Deadline</span>
+            <strong>
+              {project.deadline ? formatStripDate(project.deadline) : "—"}
+            </strong>
           </div>
         </div>
 

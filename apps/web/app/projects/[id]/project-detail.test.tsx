@@ -46,7 +46,7 @@ describe("Project detail view", () => {
     expect(screen.getByRole("heading", { name: /Life OS/ })).toBeTruthy();
     expect(screen.getByText("Active")).toBeTruthy();
     expect(screen.getByText("Ship the app")).toBeTruthy();
-    expect(screen.getByText("Monday, 19 October 2026")).toBeTruthy();
+    expect(screen.getByText("19 Oct 2026")).toBeTruthy();
   });
 
   it("renders neutral dashes for missing optional context", () => {
