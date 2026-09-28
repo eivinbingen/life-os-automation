@@ -2,16 +2,35 @@ from life_os.models.notion import Task, TaskFetchResult
 from life_os.services.projects import get_project_detail
 
 
-def project_page(status="Active", goal_id="goal-1"):
+def project_page(status="Active", goal_id="goal-1", resolved_goal=None):
     return {
         "id": "project-1",
         "properties": {
             "Name": {"type": "title", "title": [{"plain_text": "Life OS"}]},
             "Status": {"type": "status", "status": {"name": status}},
             "Goal": {"type": "relation", "relation": [{"id": goal_id}] if goal_id else []},
+            "Resolved Goal": {
+                "type": "formula",
+                "formula": {"string": resolved_goal} if resolved_goal else None,
+            },
             "Deadline": {"type": "date", "date": {"start": "2026-10-19"}},
         },
     }
+
+
+def test_empty_goal_relation_falls_back_to_resolved_goal_string():
+    detail = get_project_detail(
+        "project-1",
+        fetch_project=lambda pid: project_page(
+            goal_id=None, resolved_goal="Complete the ETH Semester"
+        ),
+        fetch_tasks_for_project=lambda pid: TaskFetchResult(tasks=[], warnings=[]),
+        fetch_goal_name=lambda gid: "never called",
+    )
+
+    assert detail.goal_id is None
+    assert detail.goal_name is None
+    assert detail.resolved_goal == "Complete the ETH Semester"
 
 
 def test_get_project_detail_assembles_all_sources():

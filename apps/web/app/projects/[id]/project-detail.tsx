@@ -96,7 +96,10 @@ export function ProjectDetailBoard({ project }: { project: ProjectDetail }) {
           <div className="overview-item">
             <span>Goal</span>
             <strong>
-              {project.goal_name ?? (project.goal_id ? "Unavailable" : "—")}
+              {project.goal_name ??
+                (project.goal_id
+                  ? "Unavailable"
+                  : project.resolved_goal ?? "—")}
             </strong>
           </div>
           <div className="overview-item">

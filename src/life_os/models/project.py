@@ -19,6 +19,9 @@ class ProjectDetail:
     goal_id: str | None
     goal_name: str | None
     deadline: str | None  # raw ISO, may carry a time component
+    # Display-only fallback: the Resolved Goal formula string, shown when
+    # the project-side Goal relation is empty (Notion inheritance).
+    resolved_goal: str | None = None
     tasks: list[Task] = field(default_factory=list)
     statuses: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)

@@ -5,9 +5,9 @@ from life_os.models.notion import Task, TaskFetchResult
 from life_os.models.project import ProjectDetail
 
 
-def _normalize_project(page: dict, goal_name: str | None) -> tuple:
+def _normalize_project(page: dict) -> tuple:
     """Normalize a raw project page into (name, status, status_available,
-    goal_id, deadline)."""
+    goal_id, resolved_goal, deadline)."""
 
     props = page.get("properties", {})
     name = _page_title(page)
@@ -25,10 +25,17 @@ def _normalize_project(page: dict, goal_name: str | None) -> tuple:
         relations = goal_prop.get("relation", [])
         goal_id = relations[0]["id"] if relations else None
 
+    # Display-only fallback for Notion-side inheritance: the Resolved Goal
+    # formula string, used when the project-side Goal relation is empty.
+    resolved_goal = None
+    resolved_prop = props.get("Resolved Goal", {})
+    if resolved_prop.get("type") == "formula":
+        resolved_goal = (resolved_prop.get("formula") or {}).get("string")
+
     deadline_value = props.get("Deadline", {}).get("date")
     deadline = deadline_value.get("start") if deadline_value else None
 
-    return name, status, status_available, goal_id, deadline
+    return name, status, status_available, goal_id, resolved_goal, deadline
 
 
 def get_project_detail(
@@ -51,11 +58,12 @@ def get_project_detail(
     status = None
     status_available = False
     goal_id = None
+    resolved_goal = None
     deadline = None
     try:
         page = fetch_project(project_id)
-        name, status, status_available, goal_id, deadline = _normalize_project(
-            page, None
+        name, status, status_available, goal_id, resolved_goal, deadline = (
+            _normalize_project(page)
         )
     except Exception as error:
         statuses.append({"name": "Notion", "ok": False, "error": str(error)})
@@ -83,6 +91,7 @@ def get_project_detail(
         status_available=status_available,
         goal_id=goal_id,
         goal_name=goal_name,
+        resolved_goal=resolved_goal,
         deadline=deadline,
         tasks=tasks,
         statuses=statuses,

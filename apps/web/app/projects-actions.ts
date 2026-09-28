@@ -17,6 +17,7 @@ export type ProjectDetail = {
   status_available: boolean;
   goal_id: string | null;
   goal_name: string | null;
+  resolved_goal: string | null;
   deadline: string | null;
   tasks: ProjectTask[];
   statuses: { name: string; ok: boolean; error: string | null }[];

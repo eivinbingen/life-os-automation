@@ -21,6 +21,7 @@ function project(overrides: Partial<ProjectDetail> = {}): ProjectDetail {
     status_available: true,
     goal_id: "goal-1",
     goal_name: "Ship the app",
+    resolved_goal: null,
     deadline: "2026-10-19",
     tasks: [
       {
@@ -52,12 +53,31 @@ describe("Project detail view", () => {
   it("renders neutral dashes for missing optional context", () => {
     render(
       <ProjectDetailBoard
-        project={project({ goal_id: null, goal_name: null, deadline: null })}
+        project={project({
+          goal_id: null,
+          goal_name: null,
+          resolved_goal: null,
+          deadline: null,
+        })}
       />,
     );
 
     expect(screen.getAllByText("—").length).toBe(2);
     expect(screen.queryByText("Unavailable")).toBeNull();
+  });
+
+  it("falls back to the resolved goal string when the relation is empty", () => {
+    render(
+      <ProjectDetailBoard
+        project={project({
+          goal_id: null,
+          goal_name: null,
+          resolved_goal: "Complete the ETH Semester",
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Complete the ETH Semester")).toBeTruthy();
   });
 
   it("renders unavailable status without hiding the project", () => {
