@@ -100,3 +100,20 @@ linking a project to a goal via either side syncs both.
 - Status option values verified against live options on 2026-09-28.
 - If the schema changes (renamed properties, new status options), re-run
   `scripts/inspect_notion_schema.py` before trusting these slices.
+
+## Inheritance in the app vs in Notion
+
+The `Resolved Goal`, `Resolved Area`, and `Inherited Goal` formula/rollup
+properties exist to make the hierarchy work inside Notion; Notion formulas
+cannot traverse relations dynamically, so they resolve it eagerly as plain
+strings. They are Notion-internal implementation details, **not part of the
+domain contract**.
+
+When Life OS needs inherited context, it derives it from the writable
+relations in the domain layer — direct relation first, then through the
+parent (e.g. a project's area is its `Direct Area` if set, otherwise its
+goal's `Area`). Any future store only has to provide the relations, which
+is what makes a transition away from Notion cheap. Reading a formula is
+acceptable as a display-only optimization, but navigation and logic must
+rely on real relations (the project detail view reads the project-side
+`Goal` relation, never `Resolved Goal`).
