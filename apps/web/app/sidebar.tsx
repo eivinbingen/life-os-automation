@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-type WorkspacePage = "today" | "weekly" | "review" | "finance" | "studies";
+type WorkspacePage = "today" | "weekly" | "review" | "finance" | "studies" | "projects" | "goals";
 
 const NAV_ITEMS: { key: WorkspacePage; href: string; icon: string; label: string }[] = [
   { key: "today", href: "/", icon: "◈", label: "Today" },
@@ -16,6 +16,8 @@ const FOOTER_NOTES: Record<WorkspacePage, string> = {
   review: "Guided weekly recalibration",
   finance: "Read-only finance review",
   studies: "Read-only studies overview",
+  projects: "Project workspace",
+  goals: "Goal workspace",
 };
 
 /** Shared workspace navigation; the current page renders as a non-link. */

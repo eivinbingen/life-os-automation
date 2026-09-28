@@ -218,6 +218,7 @@ export async function fetchLookBack(
 export type CleanUpItem = {
   id: string;
   name: string;
+  project_id: string | null;
   project_name: string | null;
   scheduled: string | null;
   due: string | null;

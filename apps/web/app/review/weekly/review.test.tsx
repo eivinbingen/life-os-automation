@@ -421,6 +421,7 @@ describe("Clean Up queue", () => {
       {
         id: "q1",
         name: "Finish case study",
+        project_id: "project-cf",
         project_name: "Corporate Finance",
         scheduled: "2026-09-16",
         due: "2026-09-10",
@@ -430,6 +431,7 @@ describe("Clean Up queue", () => {
       {
         id: "q2",
         name: "Read chapter 4",
+        project_id: null,
         project_name: null,
         scheduled: "2026-09-18",
         due: null,

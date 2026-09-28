@@ -220,3 +220,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+.claude/
+
+# Frontend dependencies and caches
+node_modules/

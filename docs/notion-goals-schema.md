@@ -48,13 +48,19 @@ its Name, Status, Area, Target Date, and related projects.
 | `Name` | title | Project name |
 | `Status` | status | Options: Planned, Waiting, **Active**, Dropped, Done |
 | `Deadline` | date | |
+| `Goal` | relation | Project → Goals; writable but **not auto-synced** — see below |
+| `Direct Area` | relation | Project → Areas; directly writable |
 | `Courses` | relation | Project → Courses; directly writable |
 | `Tasks` | relation | Project → Tasks |
 | `Resolved Goal` / `Resolved Area` | formula | Read-only inherited context |
 | `Open Tasks` / `Scheduled Tasks` / `Progress` / `Project Attention` | formula/rollup | Read-only |
 
-There is **no Goal relation on Projects**. A project's goal context comes
-only from the read-only `Resolved Goal` formula.
+An initial inspection on 2026-09-28 missed the `Goal` and `Direct Area`
+relations; a same-day re-inspection against live pages confirmed both
+exist. They are **not synced with the goal-side `Projects` relation**:
+live project pages show an empty `Goal` relation while `Resolved Goal`
+still resolves through the goal's own `Projects` relation. The goal-side
+relation is the one actually populated, so it is the authoritative link.
 
 ## Tasks properties (goal-relevant)
 
@@ -67,8 +73,9 @@ PR #40 / the Look Back slice.
 
 - The documented hierarchy is Area → Goal → Project → Task. In practice,
   the writable relations are Goal→Area (goal side), Goal→Projects (goal
-  side), Project→Tasks (task side `Project` relation), Task→Course (task
-  side `Course` relation).
+  side; the project-side `Goal` relation is a separate writable property
+  that Notion does not auto-sync), Project→Tasks (task side `Project`
+  relation), Task→Course (task side `Course` relation).
 - Goal/Area context on tasks and projects is derived by formulas
   (`Resolved Goal`, `Resolved Area`, `Inherited Goal`) — **read-only,
   never written**.
@@ -80,18 +87,49 @@ PR #40 / the Look Back slice.
 | Gate | Answer |
 | --- | --- |
 | G1 goals active status | `Status = Active` (verified live 2026-09-28) |
-| G2 goal↔project relation | Goal-side `Projects` relation; project-side has no Goal relation. Joins are made goal-side, mirroring the courses task-side precedent. |
+| G2 goal↔project relation | Goal-side `Projects` relation is the authoritative link. The project-side `Goal` relation exists and is writable but is **not auto-synced** (live pages show it empty where `Resolved Goal` resolves); writes should go through the goal side. |
 | G3 goal creation fields | `Name` (title, required); `Status` defaults to Not Started; optional `Area`, `Target Date`, `Courses`, `Projects` |
 | G4 goal completion | `Status = Done` (not "Completed") |
-| G5 writable relations on Projects | `Courses` only. No goal relation → project forms cannot set a goal; goal context on projects is formula-resolved and read-only. |
+| G5 writable relations on Projects | `Goal`, `Direct Area`, and `Courses` are all directly writable; project forms can prefill a goal, writing the goal-side `Projects` relation. |
 | G6 goals description property | None exists. Editable goal set: Name, Status, Area, Target Date. |
 
 Consequence for #49/#45: **Complete Goal = `Status = Done`, status-only,
-no cascade.** Project forms cannot prefill or set a goal; instead, projects
-are added to a goal via the goal-side `Projects` relation.
+no cascade.** Projects can be created/edited with a visible goal prefill;
+the link is written through the goal-side `Projects` relation, the side
+the rest of the app also reads.
 
 ## Unverified assumptions
 
 - Status option values verified against live options on 2026-09-28.
 - If the schema changes (renamed properties, new status options), re-run
   `scripts/inspect_notion_schema.py` before trusting these slices.
+
+## Inheritance in the app vs in Notion
+
+The `Resolved Goal`, `Resolved Area`, and `Inherited Goal` formula/rollup
+properties exist to make the hierarchy work inside Notion; Notion formulas
+cannot traverse relations dynamically, so they resolve it eagerly as plain
+strings. They are Notion-internal implementation details, **not part of the
+domain contract**.
+
+**The standard pattern for the whole hierarchy (Area → Goal → Project →
+Task):** every entity reads both its direct relation and the resolved
+fallback, preferring the direct side; writes always populate the direct
+side.
+
+- **Reads**: prefer the real relation (it carries an ID, so it is
+  navigation-ready); fall back to the resolved formula string when the
+  relation is empty. Task → goal/area reads the `Project` relation with
+  `Resolved Goal`/`Resolved Area`/`Inherited Goal` as display-only
+  fallback; Project → goal/area reads the `Goal`/`Direct Area` relations
+  with `Resolved Goal`/`Resolved Area` as fallback; Goal → area reads the
+  `Area` relation (no higher level, no fallback).
+- **Writes**: always write the direct relation — task→`Project`,
+  project→`Goal` (plus the goal-side `Projects` relation, since the two
+  sides do not auto-sync), goal→`Area`. Records the app touches become
+  direct-linked over time, making the fallback increasingly rare.
+- **Migration**: any future store only has to provide the relations,
+  which is what makes a transition away from Notion cheap. Reading a
+  formula is acceptable as a display-only optimization, but navigation
+  and logic must rely on real relations (the project detail view reads
+  the project-side `Goal` relation, never `Resolved Goal`, for its link).

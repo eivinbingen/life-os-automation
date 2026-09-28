@@ -22,6 +22,7 @@ import {
 import { TaskCapture } from "./task-capture";
 import { TaskCheckbox } from "./task-checkbox";
 import { TaskEditPanel } from "./task-edit";
+import { TaskProjectLink } from "./task-project-link";
 import {
   OpenTaskCount,
   TaskCompletionProvider,
@@ -128,7 +129,7 @@ function TaskList({
             {task.project_name && (
               <span className="task-project">
                 <span>Project</span>
-                {task.project_name}
+                <TaskProjectLink projectId={task.project_id} projectName={task.project_name} />
               </span>
             )}
             {task[dateField] && (

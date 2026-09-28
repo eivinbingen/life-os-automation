@@ -29,10 +29,12 @@ from life_os.models.notion import (
 from life_os.models.notion import (
     TaskUpdate as DomainTaskUpdate,
 )
+from life_os.models.project import ProjectDetail as DomainProjectDetail
 from life_os.models.weekly_review import WeeklyReview as DomainWeeklyReview
 from life_os.services.clean_up import get_clean_up
 from life_os.services.finance import format_mapping_problems
 from life_os.services.look_back import get_look_back
+from life_os.services.projects import ProjectNotFound
 from life_os.services.today import get_today
 from life_os.services.week import get_week
 from life_os.services.week import week_start as normalize_week_start
@@ -226,6 +228,7 @@ def create_app(
     fetch_done_week_tasks: Callable[[date, date], TaskFetchResult] | None = None,
     get_finance: Callable[[str], FinanceReview] | None = None,
     fetch_studies: Callable[[], DomainStudiesOverview] | None = None,
+    fetch_project_detail: Callable[[str], DomainProjectDetail] | None = None,
     reviews: WeeklyReviewRepository | None = None,
 ) -> FastAPI:
 
@@ -434,6 +437,24 @@ def create_app(
                 status_code=502, detail="Notion could not be reached. Try again."
             ) from error
         return {"task": task_id, "updated": True}
+
+    if fetch_project_detail is not None:
+
+        @app.get("/projects/{project_id}")
+        def project_endpoint(project_id: str) -> DomainProjectDetail:
+            try:
+                return fetch_project_detail(project_id)
+            except ProjectNotFound as error:
+                raise HTTPException(
+                    status_code=404, detail="This project could not be found."
+                ) from error
+            except Exception as error:
+                # The service degrades per source; a raised error here means
+                # the whole read failed unexpectedly.
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"The project could not be read: {error}",
+                ) from error
 
     if create_task is not None:
 

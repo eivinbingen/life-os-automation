@@ -46,8 +46,15 @@ Relationships should provide context automatically:
 In the live schema, inherited goal/area context on tasks and projects is
 computed by read-only formulas (`Resolved Goal`, `Resolved Area`,
 `Inherited Goal`) and must never be written; the writable relations are
-Goal→Area, Goal→Projects (goal side), Project→Tasks (task side), and
-Task→Course (task side). See `docs/notion-goals-schema.md`.
+Goal→Area, Goal→Projects (goal side; the project-side `Goal` relation is
+a separate writable property Notion does not auto-sync), Project→Tasks
+(task side), and Task→Course (task side). See `docs/notion-goals-schema.md`.
+
+The standard pattern across the hierarchy: every entity reads both its
+direct relation and the resolved fallback, preferring the direct side;
+writes always populate the direct side. Relations are the contract —
+formulas are at most a display-only shortcut, never something navigation
+or logic depends on.
 
 ## Scheduling
 

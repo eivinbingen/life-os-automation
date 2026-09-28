@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 
 import {
   formatDay,
+  formatItemDate,
   shiftDay,
 } from "../../date-utils";
+import { TaskProjectLink } from "../../task-project-link";
 import type {
   CleanUpSummary,
   LookBackSummary,
@@ -147,19 +149,6 @@ function LookBackBody({
   return <SummaryView summary={live.summary} saved={false} />;
 }
 
-function formatItemDate(value: string | null) {
-  if (!value) return null;
-  const datePart = value.slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null;
-  const formatted = new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  }).format(new Date(`${datePart}T12:00:00Z`));
-  // Notion's date-time value contains the wall-clock time entered for the task.
-  return value.includes("T") ? `${formatted} · ${value.slice(11, 16)}` : formatted;
-}
-
 function CleanUpBody({
   live,
   isCompleted,
@@ -241,7 +230,11 @@ function CleanUpBody({
                 {item.project_name && (
                   <span className="review-queue-project">
                     <span>Project</span>
-                    {item.project_name}
+                    <TaskProjectLink
+                      projectId={item.project_id}
+                      projectName={item.project_name}
+                      openInNewTab
+                    />
                   </span>
                 )}
                 <div className="review-queue-meta">

@@ -8,7 +8,7 @@ import { refreshWeek } from "../actions";
 vi.mock("next/server", () => ({ connection: vi.fn() }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
-const task: Task = { id: "one", name: "Task", done: false, scheduled: "2026-09-14", due: "2026-09-13", project_name: null };
+const task: Task = { id: "one", name: "Task", done: false, scheduled: "2026-09-14", due: "2026-09-13", project_id: null, project_name: null };
 const event = { id: "trip", title: "Trip", start: "2026-09-13T00:00:00+02:00", end: "2026-09-16T00:00:00+02:00", all_day: true };
 const week: Week = {
   start: "2026-09-14", end: "2026-09-20",
