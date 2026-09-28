@@ -14,7 +14,12 @@ from life_os.integrations.google_calendar import (
     get_events_for_range,
 )
 from life_os.integrations.notion_courses import fetch_studies_overview
+from life_os.integrations.notion_projects import (
+    fetch_project,
+    fetch_tasks_for_project,
+)
 from life_os.integrations.notion_tasks import (
+    _fetch_project_name,
     create_task,
     fetch_done_tasks_for_range,
     fetch_tasks_for_day,
@@ -22,6 +27,7 @@ from life_os.integrations.notion_tasks import (
     update_task,
 )
 from life_os.services.finance import get_finance_review
+from life_os.services.projects import get_project_detail as _get_project_detail
 from life_os.services.weekly_reviews import STORE_ENV_VAR, WeeklyReviewRepository
 
 
@@ -75,6 +81,18 @@ def main():
             page_size=100,
         )
 
+    projects_data_source_id = os.getenv("NOTION_PROJECTS_DATA_SOURCE_ID")
+
+    def fetch_project_detail(project_id: str):
+        return _get_project_detail(
+            project_id,
+            fetch_project=partial(fetch_project, token),
+            fetch_tasks_for_project=partial(
+                fetch_tasks_for_project, token, data_source_id, page_size=100
+            ),
+            fetch_goal_name=partial(_fetch_project_name, token),
+        )
+
     # The review store resolves from the repository root regardless of the
     # launch working directory.
     os.environ.setdefault(STORE_ENV_VAR, str(_repository_root()))
@@ -90,6 +108,9 @@ def main():
         fetch_done_week_tasks,
         get_finance=get_finance,
         fetch_studies=fetch_studies,
+        fetch_project_detail=(
+            fetch_project_detail if projects_data_source_id else None
+        ),
         reviews=reviews,
     )
     uvicorn.run(app, host="127.0.0.1", port=8000)

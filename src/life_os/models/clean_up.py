@@ -12,6 +12,7 @@ class CleanUpItem:
 
     id: str
     name: str
+    project_id: str | None
     project_name: str | None
     scheduled: str | None  # raw ISO, may carry a time component
     due: str | None

@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 
 import type { Task, Week } from "../actions";
+import Link from "next/link";
 import { DayControls } from "../day-controls";
 import { APP_TIME_ZONE, startOfWeek } from "../date-utils";
 
@@ -42,7 +43,13 @@ function TaskRow({ task, dateField }: { task: Task; dateField: "scheduled" | "du
         {task.project_name && (
           <span className="task-project">
             <span>Project</span>
-            {task.project_name}
+            {task.project_id ? (
+              <Link className="task-project-link" href={`/projects/${task.project_id}`}>
+                {task.project_name}
+              </Link>
+            ) : (
+              task.project_name
+            )}
           </span>
         )}
         {task[dateField] && (

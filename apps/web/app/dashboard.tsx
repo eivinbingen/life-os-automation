@@ -12,6 +12,7 @@ import {
 
 import type { RefreshResult, Task, Today } from "./actions";
 import { refreshToday } from "./actions";
+import Link from "next/link";
 import { DayControls } from "./day-controls";
 import {
   APP_TIME_ZONE,
@@ -128,7 +129,13 @@ function TaskList({
             {task.project_name && (
               <span className="task-project">
                 <span>Project</span>
-                {task.project_name}
+                {task.project_id ? (
+                  <Link className="task-project-link" href={`/projects/${task.project_id}`}>
+                    {task.project_name}
+                  </Link>
+                ) : (
+                  task.project_name
+                )}
               </span>
             )}
             {task[dateField] && (

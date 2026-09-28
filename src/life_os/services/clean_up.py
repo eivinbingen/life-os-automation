@@ -29,6 +29,7 @@ def _item(task: Task, local_day: date, week_start: date, week_end: date) -> Clea
     return CleanUpItem(
         id=task.id,
         name=task.name,
+        project_id=task.project_id,
         project_name=task.project_name,
         scheduled=task.scheduled.isoformat() if task.scheduled else None,
         due=task.due.isoformat() if task.due else None,

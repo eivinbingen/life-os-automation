@@ -23,6 +23,7 @@ export type Task = {
   done: boolean;
   scheduled: string | null;
   due: string | null;
+  project_id: string | null;
   project_name: string | null;
 };
 

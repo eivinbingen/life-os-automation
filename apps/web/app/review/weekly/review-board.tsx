@@ -241,7 +241,18 @@ function CleanUpBody({
                 {item.project_name && (
                   <span className="review-queue-project">
                     <span>Project</span>
-                    {item.project_name}
+                    {item.project_id ? (
+                      <a
+                        className="task-project-link"
+                        href={`/projects/${item.project_id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {item.project_name}
+                      </a>
+                    ) : (
+                      item.project_name
+                    )}
                   </span>
                 )}
                 <div className="review-queue-meta">
