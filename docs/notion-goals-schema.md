@@ -48,7 +48,7 @@ its Name, Status, Area, Target Date, and related projects.
 | `Name` | title | Project name |
 | `Status` | status | Options: Planned, Waiting, **Active**, Dropped, Done |
 | `Deadline` | date | |
-| `Goal` | relation | Project → Goals; synced with the goal-side `Projects` relation |
+| `Goal` | relation | Project → Goals; writable but **not auto-synced** — see below |
 | `Direct Area` | relation | Project → Areas; directly writable |
 | `Courses` | relation | Project → Courses; directly writable |
 | `Tasks` | relation | Project → Tasks |
@@ -57,9 +57,10 @@ its Name, Status, Area, Target Date, and related projects.
 
 An initial inspection on 2026-09-28 missed the `Goal` and `Direct Area`
 relations; a same-day re-inspection against live pages confirmed both
-exist and that goal pages carry populated `Projects` relations. The
-goal↔project relation is synced bidirectionally: writing either side
-updates both.
+exist. They are **not synced with the goal-side `Projects` relation**:
+live project pages show an empty `Goal` relation while `Resolved Goal`
+still resolves through the goal's own `Projects` relation. The goal-side
+relation is the one actually populated, so it is the authoritative link.
 
 ## Tasks properties (goal-relevant)
 
@@ -71,9 +72,10 @@ PR #40 / the Look Back slice.
 ## Inheritance and precedence
 
 - The documented hierarchy is Area → Goal → Project → Task. In practice,
-  the writable relations are Goal→Area (goal side), Goal↔Projects (synced
-  both sides), Project→Tasks (task side `Project` relation), Task→Course
-  (task side `Course` relation).
+  the writable relations are Goal→Area (goal side), Goal→Projects (goal
+  side; the project-side `Goal` relation is a separate writable property
+  that Notion does not auto-sync), Project→Tasks (task side `Project`
+  relation), Task→Course (task side `Course` relation).
 - Goal/Area context on tasks and projects is derived by formulas
   (`Resolved Goal`, `Resolved Area`, `Inherited Goal`) — **read-only,
   never written**.
@@ -85,15 +87,16 @@ PR #40 / the Look Back slice.
 | Gate | Answer |
 | --- | --- |
 | G1 goals active status | `Status = Active` (verified live 2026-09-28) |
-| G2 goal↔project relation | Synced bidirectionally: goal-side `Projects` relation and project-side `Goal` relation (verified against live pages 2026-09-28). Goal-side reads are primary; either side can be written. |
+| G2 goal↔project relation | Goal-side `Projects` relation is the authoritative link. The project-side `Goal` relation exists and is writable but is **not auto-synced** (live pages show it empty where `Resolved Goal` resolves); writes should go through the goal side. |
 | G3 goal creation fields | `Name` (title, required); `Status` defaults to Not Started; optional `Area`, `Target Date`, `Courses`, `Projects` |
 | G4 goal completion | `Status = Done` (not "Completed") |
-| G5 writable relations on Projects | `Goal`, `Direct Area`, and `Courses` are all directly writable; project forms can prefill a goal from context. |
+| G5 writable relations on Projects | `Goal`, `Direct Area`, and `Courses` are all directly writable; project forms can prefill a goal, writing the goal-side `Projects` relation. |
 | G6 goals description property | None exists. Editable goal set: Name, Status, Area, Target Date. |
 
 Consequence for #49/#45: **Complete Goal = `Status = Done`, status-only,
 no cascade.** Projects can be created/edited with a visible goal prefill;
-linking a project to a goal via either side syncs both.
+the link is written through the goal-side `Projects` relation, the side
+the rest of the app also reads.
 
 ## Unverified assumptions
 
