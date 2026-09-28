@@ -1,10 +1,12 @@
 import { connection } from "next/server";
 
-import { defaultReviewWeek, startOfWeek } from "../../date-utils";
+import { defaultReviewWeek, getLocalDay, startOfWeek } from "../../date-utils";
 import {
+  fetchCleanUp,
   fetchLookBack,
   fetchReviewByWeek,
   startReview,
+  type CleanUpSummary,
   type LookBackSummary,
   type ReviewRecord,
 } from "./review-actions";
@@ -50,9 +52,12 @@ export default async function WeeklyReviewPage({
   // A completed record renders its fixed saved summary from the record
   // itself, so live look-back data is only needed for drafts.
   let lookBack: { ok: true; summary: LookBackSummary } | { ok: false; error: string } | null = null;
+  let cleanUp: { ok: true; summary: CleanUpSummary } | { ok: false; error: string } | null = null;
   if (review.status !== "completed") {
     const lookBackResult = await fetchLookBack(weekStart);
     lookBack = lookBackResult;
+    const cleanUpResult = await fetchCleanUp(weekStart);
+    cleanUp = cleanUpResult;
   }
 
   // Keyed by record id: navigating to another week re-renders this server
@@ -65,6 +70,7 @@ export default async function WeeklyReviewPage({
       history={history}
       historyError={historyError}
       lookBack={lookBack}
+      cleanUp={cleanUp}
     />
   );
 }
@@ -73,16 +79,6 @@ function isValidWeek(value: string | undefined): value is string {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T12:00:00Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-}
-
-function getLocalDay(): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Europe/Zurich",
-  }).format(new Date());
-  return parts;
 }
 
 function listCompletedReviews(): Promise<

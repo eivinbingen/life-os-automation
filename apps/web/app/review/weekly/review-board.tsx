@@ -8,6 +8,7 @@ import {
   shiftDay,
 } from "../../date-utils";
 import type {
+  CleanUpSummary,
   LookBackSummary,
   ReviewRecord,
   SectionProgress,
@@ -144,6 +145,251 @@ function LookBackBody({
     );
   }
   return <SummaryView summary={live.summary} saved={false} />;
+}
+
+function formatItemDate(value: string | null) {
+  if (!value) return null;
+  const datePart = value.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null;
+  const formatted = new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(new Date(`${datePart}T12:00:00Z`));
+  // Notion's date-time value contains the wall-clock time entered for the task.
+  return value.includes("T") ? `${formatted} · ${value.slice(11, 16)}` : formatted;
+}
+
+function CleanUpBody({
+  live,
+  isCompleted,
+  onRetry,
+  onActionDone,
+}: {
+  live?: { ok: true; summary: CleanUpSummary } | { ok: false; error: string } | null;
+  isCompleted: boolean;
+  onRetry: () => void;
+  onActionDone: () => void;
+}) {
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  const [backlogConfirmIds, setBacklogConfirmIds] = useState<Set<string>>(new Set());
+  const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null);
+  const [rescheduleId, setRescheduleId] = useState<string | null>(null);
+
+  if (!live || !live.ok) {
+    return (
+      <div className="integration-alert" role="status">
+        <span className="alert-symbol" aria-hidden="true">!</span>
+        <span>{live && "error" in live ? live.error : "The clean-up queue could not be loaded."}</span>
+        <button type="button" className="review-retry" onClick={onRetry}>
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  const summary = live.summary;
+  const failed = summary.statuses.filter((status) => !status.ok);
+
+  const runAction = async (id: string, edits: Record<string, unknown>) => {
+    if (pendingIds.has(id)) return;
+    setPendingIds(new Set([...pendingIds, id]));
+    setActionError(null);
+    try {
+      const { updateTask } = await import("../../actions");
+      const result = await updateTask(id, edits);
+      if (result.ok) {
+        setBacklogConfirmIds(new Set([...backlogConfirmIds].filter((x) => x !== id)));
+        onActionDone();
+      } else {
+        setActionError({ id, message: result.error });
+      }
+    } catch {
+      setActionError({ id, message: "The task could not be updated. Try again." });
+    } finally {
+      setPendingIds(new Set([...pendingIds].filter((x) => x !== id)));
+    }
+  };
+
+  return (
+    <div className="review-queue-wrap">
+      <p className="review-dates-inline">
+        Overdue status as of{" "}
+        <time dateTime={summary.local_day}>{formatItemDate(summary.local_day)}</time>
+      </p>
+
+      {failed.length > 0 ? (
+        <div className="integration-alert" role="status">
+          <span className="alert-symbol" aria-hidden="true">!</span>
+          <span>
+            {failed.map((status) => status.name).join(" and ")}{" "}
+            {failed.length === 1 ? "is" : "are"} unavailable. Some information may be
+            missing.
+          </span>
+          <button type="button" className="review-retry" onClick={onRetry}>
+            Try again
+          </button>
+        </div>
+      ) : summary.items.length === 0 ? (
+        <p className="review-queue-empty">Nothing unresolved in the reviewed week.</p>
+      ) : (
+        <ul className="review-queue">
+          {summary.items.map((item) => (
+            <li key={item.id} className="review-queue-row">
+              <div className="review-queue-main">
+                <span className="review-queue-name">{item.name}</span>
+                {item.project_name && (
+                  <span className="review-queue-project">
+                    <span>Project</span>
+                    {item.project_name}
+                  </span>
+                )}
+                <div className="review-queue-meta">
+                  {item.overdue && <span className="review-overdue-chip">Overdue</span>}
+                  {item.scheduled_in_week && (
+                    <span className="review-reason-chip">Scheduled in week</span>
+                  )}
+                  {item.scheduled && <span>Scheduled {formatItemDate(item.scheduled)}</span>}
+                  {item.due && <span>Due {formatItemDate(item.due)}</span>}
+                </div>
+              </div>
+              {!isCompleted && (
+                <div className="review-queue-actions">
+                  <button
+                    type="button"
+                    className="review-queue-complete"
+                    disabled={pendingIds.has(item.id)}
+                    onClick={() => void runAction(item.id, { done: true })}
+                  >
+                    {pendingIds.has(item.id) ? "Working…" : "Complete"}
+                  </button>
+                  <button
+                    type="button"
+                    className="review-queue-reschedule"
+                    disabled={pendingIds.has(item.id)}
+                    onClick={() => setRescheduleId(item.id)}
+                  >
+                    Reschedule
+                  </button>
+                  {backlogConfirmIds.has(item.id) ? (
+                    <span className="review-queue-confirm">
+                      Clears Scheduled; keeps Due; an overdue task stays overdue.
+                      <button
+                        type="button"
+                        className="review-queue-confirm-yes"
+                        disabled={pendingIds.has(item.id)}
+                        onClick={() => void runAction(item.id, { scheduled: null })}
+                      >
+                        Move to backlog
+                      </button>
+                      <button
+                        type="button"
+                        className="review-queue-confirm-no"
+                        onClick={() => setBacklogConfirmIds(new Set([...backlogConfirmIds].filter((x) => x !== item.id)))}
+                      >
+                        Cancel
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="review-queue-backlog"
+                      disabled={pendingIds.has(item.id)}
+                      onClick={() => setBacklogConfirmIds(new Set([...backlogConfirmIds, item.id]))}
+                    >
+                      Move to backlog
+                    </button>
+                  )}
+                </div>
+              )}
+              {actionError?.id === item.id && (
+                <p className="review-action-error" role="alert">
+                  {actionError.message}
+                </p>
+              )}
+              {rescheduleId === item.id && (
+                <CleanUpRescheduleDialog
+                  item={item}
+                  pending={pendingIds.has(item.id)}
+                  onClose={() => setRescheduleId(null)}
+                  onSave={(value) => void runAction(item.id, { scheduled: value || null })}
+                />
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {summary.warnings.length > 0 && (
+        <div className="integration-alert" role="status">
+          <span className="alert-symbol" aria-hidden="true">!</span>
+          <span>{summary.warnings.join(" ")}</span>
+        </div>
+      )}
+
+      <div className="review-hygiene">
+        <h3>System hygiene</h3>
+        <p>
+          Needs Processing and missing-metadata review arrive in a later slice; not every
+          unassigned or unscheduled task is an error.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function CleanUpRescheduleDialog({
+  item,
+  pending,
+  onClose,
+  onSave,
+}: {
+  item: { scheduled: string | null; due: string | null };
+  pending: boolean;
+  onClose: () => void;
+  onSave: (value: string) => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const initial = item.scheduled?.slice(0, 10) ?? "";
+  const [value, setValue] = useState(initial);
+  const hadTime = Boolean(item.scheduled?.includes("T"));
+
+  return (
+    <dialog
+      ref={dialogRef}
+      className="capture-dialog"
+      open
+      onClose={onClose}
+      aria-label="Reschedule task"
+    >
+      <h3>Reschedule</h3>
+      <p className="review-dates-inline">
+        Changes only Scheduled. {item.due ? `Due ${formatItemDate(item.due)} is kept.` : "No deadline set."}
+      </p>
+      <label className="review-field">
+        <span>Scheduled</span>
+        <input
+          type="date"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          disabled={pending}
+        />
+      </label>
+      {hadTime && value !== initial && (
+        <p className="review-action-error" role="status">
+          The current schedule has a time; saving replaces it with an all-day date.
+        </p>
+      )}
+      <div className="review-queue-actions">
+        <button type="button" className="review-queue-complete" disabled={pending} onClick={() => onSave(value)}>
+          {pending ? "Saving…" : "Save"}
+        </button>
+        <button type="button" className="review-queue-confirm-no" onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+    </dialog>
+  );
 }
 
 function Donut({ ratio, available }: { ratio: number; available: boolean }) {
@@ -328,11 +574,13 @@ export function ReviewBoard({
   history,
   historyError,
   lookBack,
+  cleanUp,
 }: {
   initialReview: ReviewRecord;
   history: ReviewRecord[];
   historyError?: string | null;
   lookBack?: { ok: true; summary: LookBackSummary } | { ok: false; error: string } | null;
+  cleanUp?: { ok: true; summary: CleanUpSummary } | { ok: false; error: string } | null;
 }) {
   const [review, setReview] = useState(initialReview);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({ look_back: true, commit: true });
@@ -368,6 +616,21 @@ export function ReviewBoard({
       setRetryingLookBack(false);
     }
   }, [isCompleted, retryingLookBack, review.week_start]);
+
+  // The clean-up queue is fetched server-side; a client retry re-runs the
+  // same server action so a transient failure is recoverable in place.
+  const [liveCleanUp, setLiveCleanUp] = useState(cleanUp ?? null);
+  const [retryingCleanUp, setRetryingCleanUp] = useState(false);
+  const retryCleanUp = useCallback(async () => {
+    if (retryingCleanUp) return;
+    setRetryingCleanUp(true);
+    try {
+      const { fetchCleanUp } = await import("./review-actions");
+      setLiveCleanUp(await fetchCleanUp(review.week_start));
+    } finally {
+      setRetryingCleanUp(false);
+    }
+  }, [retryingCleanUp, review.week_start]);
 
   const persist = useCallback(
     async (
@@ -566,10 +829,12 @@ export function ReviewBoard({
         onToggle={() => toggleSection("clean_up")}
         onPass={() => markPassed("clean_up")}
       >
-        <p className="review-prompt">
-          Decide what to do about unresolved work. The decision queue with reschedule, backlog,
-          and complete actions arrives in a later slice; you can advance without clearing it.
-        </p>
+        <CleanUpBody
+          live={liveCleanUp}
+          isCompleted={isCompleted}
+          onRetry={() => void retryCleanUp()}
+          onActionDone={() => void retryCleanUp()}
+        />
       </ReviewSection>
 
       <ReviewSection

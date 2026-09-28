@@ -1,7 +1,7 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { LookBackSummary, ReviewRecord } from "./review-actions";
+import type { CleanUpSummary, LookBackSummary, ReviewRecord } from "./review-actions";
 import { ReviewBoard } from "./review-board";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -88,6 +88,8 @@ const completed: ReviewRecord = {
 const saveReviewDraft = vi.hoisted(() => vi.fn());
 const completeReview = vi.hoisted(() => vi.fn());
 const fetchLookBackAction = vi.hoisted(() => vi.fn());
+const updateTaskAction = vi.hoisted(() => vi.fn());
+vi.mock("../../actions", () => ({ updateTask: updateTaskAction, updateTaskDone: updateTaskAction }));
 
 vi.mock("./review-actions", async () => {
   const actual = await vi.importActual<typeof import("./review-actions")>("./review-actions");
@@ -405,5 +407,176 @@ describe("Look Back summary", () => {
     );
     openLookBack();
     expect(screen.getByText(/look-back summary is unavailable right now/)).toBeTruthy();
+  });
+});
+
+describe("Clean Up queue", () => {
+  const cleanUpSummary: CleanUpSummary = {
+    week_start: "2026-09-14",
+    week_end: "2026-09-20",
+    local_day: "2026-09-27",
+    timezone: "Europe/Zurich",
+    captured_at: "2026-09-27T09:00:00+02:00",
+    items: [
+      {
+        id: "q1",
+        name: "Finish case study",
+        project_name: "Corporate Finance",
+        scheduled: "2026-09-16",
+        due: "2026-09-10",
+        overdue: true,
+        scheduled_in_week: true,
+      },
+      {
+        id: "q2",
+        name: "Read chapter 4",
+        project_name: null,
+        scheduled: "2026-09-18",
+        due: null,
+        overdue: false,
+        scheduled_in_week: true,
+      },
+    ],
+    statuses: [{ name: "Notion", ok: true, error: null }],
+    warnings: [],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchLookBackAction.mockResolvedValue({ ok: true, summary });
+    updateTaskAction.mockResolvedValue({ ok: true });
+  });
+
+  async function renderCleanUpBoard(
+    cleanUpProp:
+      | { ok: true; summary: typeof cleanUpSummary }
+      | { ok: false; error: string } = { ok: true, summary: cleanUpSummary },
+  ) {
+    const user = userEvent.setup();
+    const view = render(
+      <ReviewBoard
+        initialReview={draft}
+        history={[completed]}
+        lookBack={{ ok: true, summary }}
+        cleanUp={cleanUpProp}
+      />,
+    );
+    const expandButtons = screen.getAllByText("Expand");
+    await user.click(expandButtons[0]);
+    return view;
+  }
+
+  it("shows queue rows with reason chips and the as-of date", async () => {
+    await renderCleanUpBoard();
+
+    expect(screen.getByText("Overdue status as of")).toBeTruthy();
+    expect(screen.getByText("Finish case study")).toBeTruthy();
+    expect(screen.getByText("Overdue")).toBeTruthy();
+    expect(screen.getAllByText("Scheduled in week").length).toBe(2);
+    expect(screen.getByText("Due 10 Sep", { exact: false })).toBeTruthy();
+  });
+
+  it("distinguishes an empty queue from failed retrieval", async () => {
+    await renderCleanUpBoard({
+      ok: true,
+      summary: { ...cleanUpSummary, items: [] },
+    });
+    expect(screen.getByText(/Nothing unresolved/)).toBeTruthy();
+
+    cleanup();
+
+    await renderCleanUpBoard({ ok: false, error: "The Life OS service could not be reached." });
+    expect(screen.getByText(/could not be reached/)).toBeTruthy();
+    expect(screen.getByText("Try again")).toBeTruthy();
+  });
+
+  it("shows the degraded banner when a source failed", async () => {
+    await renderCleanUpBoard({
+      ok: true,
+      summary: {
+        ...cleanUpSummary,
+        statuses: [{ name: "Notion", ok: false, error: "network down" }],
+      },
+    });
+    expect(screen.getByText(/Notion is unavailable/)).toBeTruthy();
+  });
+
+  it("completes a task with one done write and refreshes the queue", async () => {
+    const user = userEvent.setup();
+    await renderCleanUpBoard();
+
+    const completeButtons = screen.getAllByText("Complete");
+    await user.click(completeButtons[0]);
+
+    expect(updateTaskAction).toHaveBeenCalledTimes(1);
+    expect(updateTaskAction).toHaveBeenCalledWith("q1", { done: true });
+  });
+
+  it("reschedules via the dialog, sending only scheduled", async () => {
+    const user = userEvent.setup();
+    await renderCleanUpBoard();
+
+    await user.click(screen.getAllByText("Reschedule")[0]);
+
+    const dialog = screen.getByRole("dialog", { name: "Reschedule task" });
+    expect(within(dialog).getByText(/Changes only Scheduled/)).toBeTruthy();
+
+    const input = within(dialog).getByLabelText("Scheduled");
+    fireEvent.change(input, { target: { value: "2026-09-29" } });
+    await user.click(within(dialog).getByText("Save"));
+
+    expect(updateTaskAction).toHaveBeenCalledWith("q1", { scheduled: "2026-09-29" });
+  });
+
+  it("cancelling reschedule performs no write", async () => {
+    const user = userEvent.setup();
+    await renderCleanUpBoard();
+
+    await user.click(screen.getAllByText("Reschedule")[0]);
+    const dialog = screen.getByRole("dialog", { name: "Reschedule task" });
+    await user.click(within(dialog).getByText("Cancel"));
+
+    expect(updateTaskAction).not.toHaveBeenCalled();
+  });
+
+  it("moves to backlog with a two-step confirm, clearing scheduled", async () => {
+    const user = userEvent.setup();
+    await renderCleanUpBoard();
+
+    await user.click(screen.getAllByText("Move to backlog")[0]);
+    expect(updateTaskAction).not.toHaveBeenCalled();
+
+    expect(screen.getByText(/Clears Scheduled; keeps Due/)).toBeTruthy();
+    await user.click(screen.getByText("Move to backlog", { selector: ".review-queue-confirm-yes" }));
+
+    expect(updateTaskAction).toHaveBeenCalledWith("q1", { scheduled: null });
+  });
+
+  it("keeps the row and shows an error when an action fails", async () => {
+    const user = userEvent.setup();
+    updateTaskAction.mockResolvedValue({ ok: false, error: "Notion could not be reached." });
+    await renderCleanUpBoard();
+
+    await user.click(screen.getAllByText("Complete")[0]);
+
+    expect(await screen.findByText("Notion could not be reached.")).toBeTruthy();
+    expect(screen.getByText("Finish case study")).toBeTruthy();
+  });
+
+  it("disables actions on a completed review", async () => {
+    const user = userEvent.setup();
+    render(
+      <ReviewBoard
+        initialReview={completed}
+        history={[]}
+        cleanUp={{ ok: true, summary: cleanUpSummary }}
+      />,
+    );
+    const expandButtons = screen.getAllByText("Expand");
+    await user.click(expandButtons[0]);
+
+    expect(screen.getByText("Finish case study")).toBeTruthy();
+    expect(screen.queryByText("Complete")).toBeNull();
+    expect(screen.queryByText("Reschedule")).toBeNull();
   });
 });

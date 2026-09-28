@@ -6,6 +6,7 @@ from pydantic import BaseModel, field_validator, model_validator
 from requests import HTTPError, RequestException
 
 from life_os.models.calendar import CalendarEvent
+from life_os.models.clean_up import CleanUpSummary as DomainCleanUpSummary
 from life_os.models.courses import (
     CourseScheduleItem as DomainCourseScheduleItem,
 )
@@ -29,6 +30,7 @@ from life_os.models.notion import (
     TaskUpdate as DomainTaskUpdate,
 )
 from life_os.models.weekly_review import WeeklyReview as DomainWeeklyReview
+from life_os.services.clean_up import get_clean_up
 from life_os.services.finance import format_mapping_problems
 from life_os.services.look_back import get_look_back
 from life_os.services.today import get_today
@@ -259,6 +261,22 @@ def create_app(
                 raise HTTPException(
                     status_code=502,
                     detail=f"The look-back summary could not be read: {error}",
+                ) from error
+
+        @app.get("/reviews/weekly/clean-up")
+        def clean_up_endpoint(week_start: date) -> DomainCleanUpSummary:
+            if fetch_week_tasks is None:
+                raise HTTPException(
+                    status_code=501,
+                    detail="The clean-up queue is not configured on this service.",
+                )
+            try:
+                monday = normalize_week_start(week_start)
+                return get_clean_up(monday, monday + timedelta(days=6), fetch_week_tasks)
+            except (HTTPError, RequestException, ValueError) as error:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"The clean-up queue could not be read: {error}",
                 ) from error
 
         @app.get("/reviews/weekly")

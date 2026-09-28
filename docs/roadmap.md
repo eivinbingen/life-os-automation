@@ -42,7 +42,8 @@ discovery concludes.
 - Weekly Review V2: guided recalibration and saved review history, as specified
   in the [product design](weekly-review-v2.md) and
   [milestone](https://github.com/eivinbingen/life-os-automation/milestone/6).
-  Start/resume/complete and history (#26), Look Back (#27), unresolved work (#28),
+  Start/resume/complete and history (#26), Look Back (#27), unresolved work (#28) —
+  delivered as the Clean Up decision queue (PR link added at merge) —
   metadata hygiene (#29), Review Direction (#30), and Look Ahead (reused #9).
   Documentation is tracked in #32. The read-only V1 overview is delivered through
   [PR #25](https://github.com/eivinbingen/life-os-automation/pull/25) as an explicitly

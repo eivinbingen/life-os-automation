@@ -11,6 +11,12 @@ Area → Goal → Project → Task
 - **Project:** A finite body of work that contributes to a goal.
 - **Task:** A concrete action that may belong to a project.
 
+The Notion Tasks `Status` property is a read-only formula over `Done`/`Due`
+(✅ Done, 🟡 Today, 🔴 Overdue, 🟢 Upcoming, —). There is no reversible
+dropped/cancelled state, so the Weekly Review Clean Up (issue #28) omits a
+Drop action: dropping is never equated with completing or deleting, and
+adding Drop requires a product/schema decision tracked separately.
+
 ## Courses
 
 A **Course** represents an academic subject during a specific semester.
