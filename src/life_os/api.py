@@ -19,7 +19,15 @@ from life_os.models.finance import (
     SheetsError,
     YnabError,
 )
-from life_os.models.goal import GoalDetail as DomainGoalDetail
+from life_os.models.goal import (
+    GoalCreate,
+)
+from life_os.models.goal import (
+    GoalDetail as DomainGoalDetail,
+)
+from life_os.models.goal import (
+    GoalUpdate as DomainGoalUpdate,
+)
 from life_os.models.look_back import LookBackSummary as DomainLookBackSummary
 from life_os.models.notion import (
     UNSET,
@@ -98,6 +106,84 @@ class CreateTaskRequest(BaseModel):
         return value.strip()
 
 
+# The finite status options from the inspected Goals schema
+# (docs/notion-goals-schema.md); nothing outside this set is writable.
+GOAL_STATUSES = {"Not Started", "Active", "Failed", "Done"}
+
+
+class CreateGoalRequest(BaseModel):
+    """What a goal creation request means to write; Notion remains
+    authoritative."""
+
+    name: str
+    status: str | None = None
+    area_id: str | None = None
+    target_date: date | None = None
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Goal name must not be blank")
+        return value.strip()
+
+    @field_validator("status")
+    @classmethod
+    def status_in_schema(cls, value: str | None) -> str | None:
+        if value is not None and value not in GOAL_STATUSES:
+            raise ValueError(
+                f"Status must be one of: {', '.join(sorted(GOAL_STATUSES))}"
+            )
+        return value
+
+
+class GoalUpdate(BaseModel):
+    """What a goal edit request means to change; omitted keys preserve the
+    Notion value, an explicit null clears where clearing is meaningful.
+    Status is status-only and never cascades to projects or tasks. An
+    explicit null status is rejected — resetting to Not Started is a
+    deliberate edit, not the meaning of an ambiguous null."""
+
+    name: str | None = None
+    status: str | None = None
+    area_id: str | None = None
+    target_date: date | None = None
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("Goal name must not be blank")
+        return value.strip() if value is not None else None
+
+    @field_validator("status")
+    @classmethod
+    def status_in_schema(cls, value: str | None) -> str | None:
+        if value is not None and value not in GOAL_STATUSES:
+            raise ValueError(
+                f"Status must be one of: {', '.join(sorted(GOAL_STATUSES))}"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def reject_clearing_nonclearable_fields(self) -> "GoalUpdate":
+        if "name" in self.model_fields_set and self.name is None:
+            raise ValueError("Goal name cannot be cleared")
+        if "status" in self.model_fields_set and self.status is None:
+            raise ValueError("Goal status cannot be cleared; send a status instead")
+        return self
+
+    def to_domain(self) -> DomainGoalUpdate:
+        return DomainGoalUpdate(
+            name=self.name if "name" in self.model_fields_set else UNSET,
+            status=self.status if "status" in self.model_fields_set else UNSET,
+            area_id=self.area_id if "area_id" in self.model_fields_set else UNSET,
+            target_date=(
+                self.target_date if "target_date" in self.model_fields_set else UNSET
+            ),
+        )
+
+
 class WeeklyReviewDraftUpdate(BaseModel):
     """What a draft save means to change; omitted keys preserve stored text."""
 
@@ -132,7 +218,7 @@ def _review_endpoint_error(error: WeeklyReviewError) -> HTTPException:
     return HTTPException(status_code=status, detail=str(error))
 
 
-def _notion_write_error(error: HTTPError, action: str) -> HTTPException:
+def _notion_write_error(error: HTTPError, action: str, entity: str = "task") -> HTTPException:
     status = error.response.status_code if error.response is not None else None
     if status == 403:
         return HTTPException(
@@ -146,11 +232,13 @@ def _notion_write_error(error: HTTPError, action: str) -> HTTPException:
         return HTTPException(
             status_code=502,
             detail=(
-                "Notion rejected the task properties. Check the configured "
-                "task data source schema."
+                f"Notion rejected the {entity} properties. Check the configured "
+                f"{entity} data source schema."
             ),
         )
-    return HTTPException(status_code=502, detail=f"Notion could not {action} the task. Try again.")
+    return HTTPException(
+        status_code=502, detail=f"Notion could not {action} the {entity}. Try again."
+    )
 
 
 class ScheduleItemResponse(BaseModel):
@@ -233,6 +321,8 @@ def create_app(
     fetch_project_detail: Callable[[str], DomainProjectDetail] | None = None,
     fetch_goal_detail: Callable[[str], DomainGoalDetail] | None = None,
     fetch_active_goals: Callable[[], list] | None = None,
+    create_goal: Callable[[GoalCreate], dict] | None = None,
+    update_goal: Callable[[str, DomainGoalUpdate], bool] | None = None,
     reviews: WeeklyReviewRepository | None = None,
 ) -> FastAPI:
 
@@ -510,5 +600,42 @@ def create_app(
                 raise HTTPException(
                     status_code=502, detail="Notion could not be reached. Try again."
                 ) from error
+
+    if create_goal is not None:
+
+        @app.post("/goals", status_code=201)
+        def create_goal_endpoint(request: CreateGoalRequest) -> dict:
+            try:
+                return create_goal(
+                    GoalCreate(
+                        name=request.name,
+                        status=request.status,
+                        area_id=request.area_id,
+                        target_date=request.target_date,
+                    )
+                )
+            except HTTPError as error:
+                raise _notion_write_error(error, "create", entity="goal") from error
+            except RequestException as error:
+                raise HTTPException(
+                    status_code=502, detail="Notion could not be reached. Try again."
+                ) from error
+
+    if update_goal is not None:
+
+        @app.patch("/goals/{goal_id}")
+        def update_goal_endpoint(goal_id: str, update: GoalUpdate) -> dict:
+            domain_update = update.to_domain()
+            if domain_update == DomainGoalUpdate():
+                raise HTTPException(status_code=422, detail="No goal fields to update")
+            try:
+                update_goal(goal_id, domain_update)
+            except HTTPError as error:
+                raise _notion_write_error(error, "update", entity="goal") from error
+            except RequestException as error:
+                raise HTTPException(
+                    status_code=502, detail="Notion could not be reached. Try again."
+                ) from error
+            return {"goal": goal_id, "updated": True}
 
     return app

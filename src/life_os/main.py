@@ -15,9 +15,11 @@ from life_os.integrations.google_calendar import (
 )
 from life_os.integrations.notion_courses import fetch_studies_overview
 from life_os.integrations.notion_goals import (
+    create_goal,
     fetch_active_goals,
     fetch_goal,
     fetch_projects_by_ids,
+    update_goal,
 )
 from life_os.integrations.notion_projects import (
     fetch_project,
@@ -101,6 +103,9 @@ def main():
         )
 
     goals_data_source_id = os.getenv("NOTION_GOALS_DATA_SOURCE_ID")
+    # One shared check gates both goal reads and writes: a blank value
+    # must not wire a query or a create parent against an empty id.
+    goals_configured = bool(goals_data_source_id)
 
     def fetch_goal_detail(goal_id: str):
         return _get_goal_detail(
@@ -130,11 +135,15 @@ def main():
         fetch_studies=fetch_studies,
         fetch_project_detail=fetch_project_detail,
         fetch_goal_detail=(
-            fetch_goal_detail if goals_data_source_id else None
+            fetch_goal_detail if goals_configured else None
         ),
         fetch_active_goals=(
-            fetch_goals_active if goals_data_source_id else None
+            fetch_goals_active if goals_configured else None
         ),
+        create_goal=(
+            partial(create_goal, token, goals_data_source_id) if goals_configured else None
+        ),
+        update_goal=partial(update_goal, token) if goals_configured else None,
         reviews=reviews,
     )
     uvicorn.run(app, host="127.0.0.1", port=8000)

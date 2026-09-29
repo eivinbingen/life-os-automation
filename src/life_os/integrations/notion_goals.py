@@ -10,8 +10,8 @@ from life_os.integrations.notion_common import (
 from life_os.integrations.notion_common import (
     page_title as _page_title,
 )
-from life_os.models.goal import ProjectRef
-from life_os.models.notion import Task
+from life_os.models.goal import GoalCreate, GoalUpdate, ProjectRef
+from life_os.models.notion import UNSET, Task
 
 
 def fetch_active_goals(token: str, data_source_id: str, page_size: int) -> list[Task]:
@@ -85,3 +85,69 @@ def fetch_projects_by_ids(
         warnings.append(f"Could not load names for {failed} linked {noun}.")
 
     return projects, warnings
+
+
+def create_goal(token: str, data_source_id: str, goal: GoalCreate) -> dict:
+    """Create a goal page in the configured Notion data source.
+
+    Writes only what creation means to set: the name, and each optional
+    field only when provided. Status defaults to Not Started in the
+    schema, so it is not written unless explicitly requested.
+    """
+
+    properties: dict = {
+        "Name": {"title": [{"text": {"content": goal.name}}]},
+    }
+    if goal.status is not None:
+        properties["Status"] = {"status": {"name": goal.status}}
+    if goal.area_id is not None:
+        properties["Area"] = {"relation": [{"id": goal.area_id}]}
+    if goal.target_date is not None:
+        properties["Target Date"] = {"date": {"start": goal.target_date.isoformat()}}
+
+    res = requests.post(
+        url=f"{NOTION_API_URL}/pages",
+        headers=_headers(token),
+        json={
+            "parent": {"data_source_id": data_source_id, "type": "data_source_id"},
+            "properties": properties,
+        },
+    )
+    res.raise_for_status()
+    return res.json()
+
+
+def update_goal(token: str, goal_id: str, update: GoalUpdate) -> bool:
+    """PATCH a goal page with only the deliberately edited properties.
+
+    Fields left as UNSET are omitted entirely, so Notion preserves their
+    current values. Status is status-only: completing, failing, or
+    pausing a goal never touches its projects or their tasks.
+    """
+
+    properties: dict = {}
+    if update.name is not UNSET:
+        # A set name is never None: the API layer rejects null names.
+        properties["Name"] = {"title": [{"text": {"content": update.name}}]}
+    if update.status is not UNSET:
+        # A set status is never None: the API layer rejects an explicit
+        # null status, so resetting to Not Started must be sent as a value.
+        properties["Status"] = {"status": {"name": update.status}}
+    if update.area_id is not UNSET:
+        if update.area_id is None:
+            properties["Area"] = {"relation": []}
+        else:
+            properties["Area"] = {"relation": [{"id": update.area_id}]}
+    if update.target_date is not UNSET:
+        if update.target_date is None:
+            properties["Target Date"] = {"date": None}
+        else:
+            properties["Target Date"] = {"date": {"start": update.target_date.isoformat()}}
+
+    res = requests.patch(
+        url=f"{NOTION_API_URL}/pages/{goal_id}",
+        headers=_headers(token),
+        json={"properties": properties},
+    )
+    res.raise_for_status()
+    return True
