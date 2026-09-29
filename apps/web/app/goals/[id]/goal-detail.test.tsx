@@ -1,12 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { GoalDetailBoard } from "./goal-detail";
 import type { GoalDetail } from "../../goals-actions";
 
-vi.mock("../../goals-actions", () => ({
-  fetchGoalDetail: vi.fn(),
+const push = vi.fn();
+const refresh = vi.fn();
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh }) }));
+vi.mock("../../goal-actions", () => ({
+  completeGoal: vi.fn(),
+  updateGoal: vi.fn(),
+  GOAL_STATUSES: ["Not Started", "Active", "Failed", "Done"],
 }));
+
+import { completeGoal, updateGoal } from "../../goal-actions";
+
+const completeGoalMock = vi.mocked(completeGoal);
+const updateGoalMock = vi.mocked(updateGoal);
 
 function goal(overrides: Partial<GoalDetail> = {}): GoalDetail {
   return {
@@ -80,5 +92,80 @@ describe("Goal detail view", () => {
 
     const link = screen.getByRole("link", { name: "Life OS" });
     expect(link.getAttribute("href")).toBe("/projects/p1");
+  });
+
+  it("completes the goal through a confirmed status-only edit", async () => {
+    const user = userEvent.setup();
+    completeGoalMock.mockResolvedValue({ ok: true });
+    render(<GoalDetailBoard goal={goal()} />);
+
+    await user.click(screen.getByRole("button", { name: "Complete goal" }));
+
+    // Inline confirm names the no-cascade guarantee before the write.
+    expect(
+      screen.getByText(/projects and tasks are unchanged/),
+    ).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Complete goal" }));
+
+    expect(completeGoalMock).toHaveBeenCalledWith("goal-1");
+  });
+
+  it("cancels completion without any write", async () => {
+    const user = userEvent.setup();
+    render(<GoalDetailBoard goal={goal()} />);
+
+    await user.click(screen.getByRole("button", { name: "Complete goal" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(completeGoalMock).not.toHaveBeenCalled();
+  });
+
+  it("opens the edit form prefilled and saves only changed fields", async () => {
+    const user = userEvent.setup();
+    updateGoalMock.mockResolvedValue({ ok: true });
+    render(<GoalDetailBoard goal={goal()} />);
+
+    await user.click(screen.getByRole("button", { name: "Edit goal" }));
+
+    // The form seeds from the goal's current values.
+    const nameInput = screen.getByLabelText("Name") as HTMLInputElement;
+    expect(nameInput.value).toBe("Ship the app");
+    const statusSelect = screen.getByLabelText("Status") as HTMLSelectElement;
+    expect(statusSelect.value).toBe("Active");
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    // Nothing changed: no fields are sent.
+    expect(updateGoalMock).toHaveBeenCalledWith("goal-1", {});
+  });
+
+  it("sends a renamed goal as a name-only edit", async () => {
+    const user = userEvent.setup();
+    updateGoalMock.mockResolvedValue({ ok: true });
+    render(<GoalDetailBoard goal={goal()} />);
+
+    await user.click(screen.getByRole("button", { name: "Edit goal" }));
+    const nameInput = screen.getByLabelText("Name");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Renamed goal");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(updateGoalMock).toHaveBeenCalledWith("goal-1", { name: "Renamed goal" });
+  });
+
+  it("keeps the entered edits and shows the error when a save fails", async () => {
+    const user = userEvent.setup();
+    updateGoalMock.mockResolvedValue({ ok: false, error: "Could not save the goal" });
+    render(<GoalDetailBoard goal={goal()} />);
+
+    await user.click(screen.getByRole("button", { name: "Edit goal" }));
+    const nameInput = screen.getByLabelText("Name");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Renamed goal");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(screen.getByText("Could not save the goal")).toBeTruthy();
+    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Renamed goal");
   });
 });

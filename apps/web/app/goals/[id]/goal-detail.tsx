@@ -1,7 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
+import { completeGoal, updateGoal } from "../../goal-actions";
+import { GoalForm } from "../../goal-form";
 import { formatStripDate } from "../../date-utils";
 import type { GoalDetail } from "../../goals-actions";
 import { TaskProjectLink } from "../../task-project-link";
@@ -14,6 +17,60 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
     [goal.projects],
   );
 
+  const router = useRouter();
+  const [editOpen, setEditOpen] = useState(false);
+  const [editPending, setEditPending] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [confirmingComplete, setConfirmingComplete] = useState(false);
+  const [completePending, setCompletePending] = useState(false);
+  const [completeError, setCompleteError] = useState<string | null>(null);
+  // Guards against a duplicate completion write before state updates land.
+  const completeInFlight = useRef(false);
+
+  async function saveEdit(
+    _values: { name: string; status: string; area_id: string | null; target_date: string | null },
+    changed: { name?: string; status?: string; area_id?: string | null; target_date?: string | null },
+  ) {
+    if (editPending) return;
+    setEditPending(true);
+    setEditError(null);
+    try {
+      const result = await updateGoal(goal.id, changed);
+      if (result.ok) {
+        setEditOpen(false);
+        router.refresh();
+      } else {
+        // Failed save: keep the entered edits for retry, show the error.
+        setEditError(result.error);
+      }
+    } catch {
+      setEditError("The goal could not be saved. Try again.");
+    } finally {
+      setEditPending(false);
+    }
+  }
+
+  async function confirmComplete() {
+    if (completeInFlight.current) return;
+    completeInFlight.current = true;
+    setCompletePending(true);
+    setCompleteError(null);
+    try {
+      const result = await completeGoal(goal.id);
+      if (result.ok) {
+        setConfirmingComplete(false);
+        router.refresh();
+      } else {
+        setCompleteError(result.error);
+      }
+    } catch {
+      setCompleteError("The goal could not be completed. Try again.");
+    } finally {
+      completeInFlight.current = false;
+      setCompletePending(false);
+    }
+  }
+
   return (
     <div className="dashboard-content">
       <section className="intro" aria-labelledby="goal-title">
@@ -25,6 +82,16 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
           <p className="intro-copy">
             The goal&apos;s intended outcome and the work connected to it, from Notion.
           </p>
+        </div>
+        <div className="review-section-controls">
+          <button
+            type="button"
+            className="review-advance"
+            onClick={() => setEditOpen(true)}
+            disabled={editPending}
+          >
+            Edit goal
+          </button>
         </div>
       </section>
 
@@ -72,6 +139,47 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
         </div>
       </div>
 
+      {goal.status === "Done" ? (
+        <p className="review-completed-note">
+          This goal is Done. Its projects and tasks are unchanged.
+        </p>
+      ) : confirmingComplete ? (
+        <div className="review-queue-confirm" role="alertdialog" aria-label="Confirm completion">
+          Sets the goal&apos;s status to Done; projects and tasks are unchanged.
+          <button
+            type="button"
+            className="review-queue-confirm-yes"
+            disabled={completePending}
+            onClick={() => void confirmComplete()}
+          >
+            {completePending ? "Working…" : "Complete goal"}
+          </button>
+          <button
+            type="button"
+            className="review-queue-confirm-no"
+            onClick={() => setConfirmingComplete(false)}
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <div className="review-section-controls">
+          <button
+            type="button"
+            className="review-queue-complete"
+            onClick={() => setConfirmingComplete(true)}
+            disabled={completePending}
+          >
+            Complete goal
+          </button>
+        </div>
+      )}
+      {completeError && (
+        <p className="review-action-error" role="alert">
+          {completeError}
+        </p>
+      )}
+
       <section className="panel" aria-labelledby="goal-projects-heading">
         <div className="panel-heading">
           <div>
@@ -98,9 +206,26 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
         )}
       </section>
 
+      {editOpen && (
+        <GoalForm
+          heading="Edit goal"
+          kicker="EDIT GOAL"
+          initial={{
+            name: goal.name ?? "",
+            status: goal.status ?? "Not Started",
+            area_id: goal.area_id,
+            target_date: goal.target_date,
+          }}
+          pending={editPending}
+          error={editError}
+          onSave={(values, changed) => void saveEdit(values, changed)}
+          onClose={() => setEditOpen(false)}
+        />
+      )}
+
       <footer className="dashboard-footer">
         <span>Life OS <span className="footer-separator">/</span> Goal</span>
-        <span className="footer-status"><span className="footer-status-dot" />Read-only workspace</span>
+        <span className="footer-status"><span className="footer-status-dot" />Goal workspace</span>
       </footer>
     </div>
   );
