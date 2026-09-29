@@ -2,10 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 
-/** The finite status options from the inspected Goals schema. */
-export const GOAL_STATUSES = ["Not Started", "Active", "Failed", "Done"] as const;
-
-export type GoalStatus = (typeof GOAL_STATUSES)[number];
+/** The finite status options from the inspected Goals schema. UI-only:
+ * the backend validates the same set. Lives in goal-form.tsx because a
+ * "use server" module may only export async functions. */
+export type GoalStatus = "Not Started" | "Active" | "Failed" | "Done";
 
 /** The goal fields an edit can deliberately change. */
 export type GoalEdits = {

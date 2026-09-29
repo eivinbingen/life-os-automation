@@ -12,7 +12,6 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh }) }));
 vi.mock("../../goal-actions", () => ({
   completeGoal: vi.fn(),
   updateGoal: vi.fn(),
-  GOAL_STATUSES: ["Not Started", "Active", "Failed", "Done"],
 }));
 
 import { completeGoal, updateGoal } from "../../goal-actions";

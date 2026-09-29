@@ -2,7 +2,10 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 
-import { GOAL_STATUSES } from "./goal-actions";
+// The finite status options from the inspected Goals schema; the backend
+// validates the same set. Kept here because goal-actions.ts is a
+// "use server" module, which may only export async functions.
+const GOAL_STATUSES = ["Not Started", "Active", "Failed", "Done"] as const;
 
 export type GoalFormValues = {
   name: string;
