@@ -263,3 +263,47 @@ export async function fetchCleanUp(
     };
   }
 }
+
+export type DirectionGoal = {
+  id: string;
+  name: string | null;
+  status: string | null;
+  status_available: boolean;
+  projects: { id: string; name: string | null }[];
+};
+
+export type DirectionSummary = {
+  week_start: string;
+  captured_at: string;
+  timezone: string;
+  items: DirectionGoal[];
+  statuses: { name: string; ok: boolean; error: string | null }[];
+  warnings: string[];
+};
+
+export async function fetchDirection(
+  weekStart: string,
+): Promise<{ ok: true; summary: DirectionSummary } | { ok: false; error: string }> {
+  const base = apiUrl();
+  if (!base) {
+    return { ok: false, error: "The connection to the local Life OS service is not configured." };
+  }
+  try {
+    const response = await fetch(
+      `${base}/reviews/weekly/direction?week_start=${encodeURIComponent(weekStart)}`,
+      {
+        cache: "no-store",
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+    if (!response.ok) {
+      return { ok: false, error: "The direction summary could not be loaded. Please try again." };
+    }
+    return { ok: true, summary: (await response.json()) as DirectionSummary };
+  } catch {
+    return {
+      ok: false,
+      error: "The Life OS service could not be reached. Check that it is running, then try again.",
+    };
+  }
+}

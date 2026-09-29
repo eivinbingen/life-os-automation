@@ -16,6 +16,7 @@ from life_os.integrations.google_calendar import (
 from life_os.integrations.notion_courses import fetch_studies_overview
 from life_os.integrations.notion_goals import (
     create_goal,
+    fetch_active_goal_pages,
     fetch_active_goals,
     fetch_goal,
     fetch_projects_by_ids,
@@ -126,6 +127,9 @@ def main():
     def fetch_goals_active():
         return fetch_active_goals(token, goals_data_source_id, page_size=100)
 
+    def fetch_goals_active_pages():
+        return fetch_active_goal_pages(token, goals_data_source_id, page_size=100)
+
     # The review store resolves from the repository root regardless of the
     # launch working directory.
     os.environ.setdefault(STORE_ENV_VAR, str(_repository_root()))
@@ -158,6 +162,10 @@ def main():
             else None
         ),
         update_project=partial(update_project, token) if projects_configured else None,
+        fetch_active_goal_pages=(
+            fetch_goals_active_pages if goals_configured else None
+        ),
+        resolve_projects=partial(fetch_projects_by_ids, token),
         reviews=reviews,
     )
     uvicorn.run(app, host="127.0.0.1", port=8000)

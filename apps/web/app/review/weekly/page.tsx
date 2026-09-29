@@ -3,10 +3,12 @@ import { connection } from "next/server";
 import { defaultReviewWeek, getLocalDay, startOfWeek } from "../../date-utils";
 import {
   fetchCleanUp,
+  fetchDirection,
   fetchLookBack,
   fetchReviewByWeek,
   startReview,
   type CleanUpSummary,
+  type DirectionSummary,
   type LookBackSummary,
   type ReviewRecord,
 } from "./review-actions";
@@ -53,11 +55,14 @@ export default async function WeeklyReviewPage({
   // itself, so live look-back data is only needed for drafts.
   let lookBack: { ok: true; summary: LookBackSummary } | { ok: false; error: string } | null = null;
   let cleanUp: { ok: true; summary: CleanUpSummary } | { ok: false; error: string } | null = null;
+  let direction: { ok: true; summary: DirectionSummary } | { ok: false; error: string } | null = null;
   if (review.status !== "completed") {
     const lookBackResult = await fetchLookBack(weekStart);
     lookBack = lookBackResult;
     const cleanUpResult = await fetchCleanUp(weekStart);
     cleanUp = cleanUpResult;
+    const directionResult = await fetchDirection(weekStart);
+    direction = directionResult;
   }
 
   // Keyed by record id: navigating to another week re-renders this server
@@ -71,6 +76,7 @@ export default async function WeeklyReviewPage({
       historyError={historyError}
       lookBack={lookBack}
       cleanUp={cleanUp}
+      direction={direction}
     />
   );
 }

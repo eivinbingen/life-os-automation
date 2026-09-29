@@ -43,6 +43,37 @@ def fetch_active_goals(token: str, data_source_id: str, page_size: int) -> list[
     return list(goals.values())
 
 
+def fetch_active_goal_pages(
+    token: str, data_source_id: str, page_size: int
+) -> list[dict]:
+    """Fetch raw goal pages with the Notion-defined Active status.
+
+    A narrow read for the Review Direction stage (#30): the service
+    normalizes each page (name, status, project relation ids). Bounded by
+    page_size pagination.
+    """
+
+    pages: dict[str, dict] = {}
+    body = {
+        "filter": {"property": "Status", "status": {"equals": "Active"}},
+        "page_size": page_size,
+    }
+    while True:
+        res = requests.post(
+            url=f"{NOTION_API_URL}/data_sources/{data_source_id}/query",
+            headers=_headers(token),
+            json=body,
+        )
+        res.raise_for_status()
+        data = res.json()
+        for page in data["results"]:
+            pages.setdefault(page["id"], page)
+        if not data["has_more"]:
+            break
+        body["start_cursor"] = data["next_cursor"]
+    return list(pages.values())
+
+
 def fetch_goal(token: str, goal_id: str) -> dict:
     """Fetch one goal page raw (name, status, relations) for the service
     layer to normalize. Read-only; raises on failure."""
