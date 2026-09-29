@@ -52,9 +52,15 @@ class ProjectUpdate:
     clears it where clearing is meaningful (goal, deadline). Status is
     written only when set — changing status never cascades to the
     project's tasks.
+
+    previous_goal_id carries the goal link the editor saw when the edit
+    was composed. The goal-side sync repairs against it, so a retry after
+    a partial sync failure still moves the link from the goal the user
+    saw to the goal they chose.
     """
 
     name: str | None | _Unset = UNSET
     status: str | None | _Unset = UNSET
     goal_id: str | None | _Unset = UNSET
+    previous_goal_id: str | None | _Unset = UNSET
     deadline: date | None | _Unset = UNSET

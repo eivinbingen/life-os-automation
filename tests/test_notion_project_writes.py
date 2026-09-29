@@ -225,3 +225,122 @@ def test_update_project_failure_raises(monkeypatch):
         pass
     else:
         raise AssertionError("expected RequestException")
+
+
+def test_update_project_retry_after_partial_sync_repairs(monkeypatch):
+    """A retry after a partial sync failure still repairs: the sync keys
+    off previous_goal_id (the editor's view), not the live page state —
+    so the already-applied PATCH does not make it skip the repair."""
+
+    patch_requests = []
+
+    def patch(**kwargs):
+        patch_requests.append(kwargs)
+        return FakeResponse({"id": "project-1", "properties": {}})
+
+    # The project page already points at goal-new (the PATCH landed last
+    # time); goal-old still lists the project, goal-new does not.
+    pages = {
+        "project-1": {
+            "properties": {"Goal": {"type": "relation", "relation": [{"id": "goal-new"}]}}
+        },
+        "goal-old": {
+            "properties": {
+                "Projects": {
+                    "type": "relation",
+                    "relation": [{"id": "project-1"}, {"id": "other"}],
+                }
+            }
+        },
+        "goal-new": {"properties": {"Projects": {"type": "relation", "relation": []}}},
+    }
+
+    def get(**kwargs):
+        page_id = kwargs["url"].rsplit("/", 1)[-1]
+        return FakeResponse(pages[page_id])
+
+    monkeypatch.setattr(notion_projects.requests, "patch", patch)
+    monkeypatch.setattr(notion_projects.requests, "get", get)
+
+    assert notion_projects.update_project(
+        token="secret",
+        project_id="project-1",
+        update=ProjectUpdate(goal_id="goal-new", previous_goal_id="goal-old"),
+    )
+
+    writes = [
+        req["json"]["properties"]["Projects"]
+        for req in patch_requests
+        if "Projects" in req["json"]["properties"]
+    ]
+    # The stale entry on the old goal is removed and the new goal gains
+    # the project, even though the live page already pointed at goal-new.
+    assert {"relation": [{"id": "other"}]} in writes
+    assert {"relation": [{"id": "project-1"}]} in writes
+
+
+def test_update_project_fully_applied_sync_is_noop(monkeypatch):
+    """A retry where the sync already landed writes nothing: both sides
+    already reflect the desired state."""
+
+    patch_requests = []
+
+    def patch(**kwargs):
+        patch_requests.append(kwargs)
+        return FakeResponse({"id": "project-1", "properties": {}})
+
+    pages = {
+        "project-1": {
+            "properties": {"Goal": {"type": "relation", "relation": [{"id": "goal-new"}]}}
+        },
+        "goal-old": {"properties": {"Projects": {"type": "relation", "relation": []}}},
+        "goal-new": {
+            "properties": {"Projects": {"type": "relation", "relation": [{"id": "project-1"}]}}
+        },
+    }
+
+    def get(**kwargs):
+        page_id = kwargs["url"].rsplit("/", 1)[-1]
+        return FakeResponse(pages[page_id])
+
+    monkeypatch.setattr(notion_projects.requests, "patch", patch)
+    monkeypatch.setattr(notion_projects.requests, "get", get)
+
+    assert notion_projects.update_project(
+        token="secret",
+        project_id="project-1",
+        update=ProjectUpdate(goal_id="goal-new", previous_goal_id="goal-old"),
+    )
+
+    writes = [
+        req["json"]["properties"]["Projects"]
+        for req in patch_requests
+        if "Projects" in req["json"]["properties"]
+    ]
+    # The membership checks make the repair a no-op on both sides.
+    assert writes == []
+
+
+def test_create_project_goal_link_failure_raises_goal_link_error(monkeypatch):
+    """The page was created but the goal-side link failed: GoalLinkError
+    carries the created id so the caller never invites a re-create."""
+
+    def post(**kwargs):
+        return FakeResponse({"id": "new-project-1", "properties": {}})
+
+    def get(**kwargs):
+        return FakeResponse({}, error=RequestException("Notion unavailable"))
+
+    monkeypatch.setattr(notion_projects.requests, "post", post)
+    monkeypatch.setattr(notion_projects.requests, "get", get)
+
+    try:
+        notion_projects.create_project(
+            token="secret",
+            data_source_id="projects",
+            project=ProjectCreate(name="Life OS", goal_id="goal-1"),
+        )
+    except notion_projects.GoalLinkError as error:
+        assert error.project_id == "new-project-1"
+    else:
+        raise AssertionError("expected GoalLinkError")

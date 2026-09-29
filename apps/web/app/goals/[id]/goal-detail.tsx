@@ -47,11 +47,22 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
         goal_id?: string | null;
         deadline?: string | null;
       } = { name: values.name, status: values.status };
+      if (values.goal_id) edits.goal_id = values.goal_id;
       if (values.deadline) edits.deadline = values.deadline;
       const result = await createProject(edits);
       if (result.ok) {
         setAddProjectOpen(false);
-        router.push(`/projects/${result.projectId}`);
+        // The page exists even when the goal-side link failed; opening it
+        // beats inviting a duplicate re-create.
+        if (result.goalLinkError) {
+          setAddProjectError(
+            "The project was created but linking it to this goal failed. " +
+              "Link it from the project page later.",
+          );
+          router.push(`/projects/${result.projectId}`);
+        } else {
+          router.push(`/projects/${result.projectId}`);
+        }
       } else {
         setAddProjectError(result.error);
       }

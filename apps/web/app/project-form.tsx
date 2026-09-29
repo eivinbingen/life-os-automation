@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 // The finite status options from the inspected Projects schema; the backend
 // validates the same set. Kept here because projects-actions.ts is a
@@ -15,6 +15,12 @@ export type ProjectFormValues = {
 };
 
 export type GoalOption = { id: string; name: string | null };
+
+/** The form values plus the display name of the current goal, used to
+ * label the merged-in current-goal option when it is not in the list. */
+export type ProjectFormSeed = Partial<ProjectFormValues> & {
+  goal_name?: string | null;
+};
 
 /**
  * Shared Add Project / Edit Project dialog. Fields mirror the editable set
@@ -36,7 +42,7 @@ export function ProjectForm({
 }: {
   heading: string;
   kicker: string;
-  initial?: Partial<ProjectFormValues>;
+  initial?: ProjectFormSeed;
   goalOptions?: GoalOption[];
   lockedGoal?: GoalOption | null;
   pending: boolean;
@@ -53,6 +59,16 @@ export function ProjectForm({
   const initialStatus = seed.status ?? "Planned";
   const initialGoalId = lockedGoal ? lockedGoal.id : seed.goal_id ?? "";
   const initialDeadline = seed.deadline?.slice(0, 10) ?? "";
+
+  // The picker lists active goals; the project's current goal is merged in
+  // so an existing link to a non-Active goal (or while the goals read
+  // failed) stays visible and selectable instead of showing as "No goal".
+  const options: GoalOption[] = useMemo(() => {
+    const listed = goalOptions ?? [];
+    if (!seed.goal_id) return listed;
+    if (listed.some((goal) => goal.id === seed.goal_id)) return listed;
+    return [{ id: seed.goal_id, name: seed.goal_name ?? null }, ...listed];
+  }, [goalOptions, seed.goal_id, seed.goal_name]);
 
   const [name, setName] = useState(initialName);
   const [status, setStatus] = useState(initialStatus);
@@ -173,17 +189,17 @@ export function ProjectForm({
                 id={`${formId}-goal`}
                 className="capture-name task-edit-name"
                 value={goalId}
-                disabled={pending || !goalOptions || goalOptions.length === 0}
+                disabled={pending || options.length === 0}
                 onChange={(event) => setGoalId(event.target.value)}
               >
                 <option value="">No goal</option>
-                {(goalOptions ?? []).map((goal) => (
+                {options.map((goal) => (
                   <option key={goal.id} value={goal.id}>
-                    {goal.name ?? "Untitled goal"}
+                    {goal.name || "Untitled goal"}
                   </option>
                 ))}
               </select>
-              {(!goalOptions || goalOptions.length === 0) && (
+              {options.length === 0 && (
                 <p className="capture-hint">
                   Active goals could not be listed; the link can be set later.
                 </p>

@@ -6,6 +6,7 @@ from life_os.integrations.notion_common import (
 from life_os.integrations.notion_common import (
     headers as _headers,
 )
+from life_os.integrations.notion_goals import fetch_goal
 from life_os.integrations.notion_tasks import (
     _task_from_page,
 )
@@ -13,18 +14,24 @@ from life_os.models.notion import UNSET, Task, TaskFetchResult
 from life_os.models.project import ProjectCreate, ProjectUpdate
 
 
+class GoalLinkError(Exception):
+    """The project write landed but the goal-side `Projects` sync failed.
+
+    Carries the project id so the caller can report a partial success
+    (the project exists) instead of inviting a duplicate re-create.
+    """
+
+    def __init__(self, project_id: str, detail: str):
+        self.project_id = project_id
+        self.detail = detail
+        super().__init__(detail)
+
+
 def fetch_project(token: str, project_id: str) -> dict:
     """Fetch one project page raw (name, status, relations) for the service
     layer to normalize. Read-only; raises on failure."""
 
     return _fetch_page(token, project_id)
-
-
-def fetch_goal_page(token: str, goal_id: str) -> dict:
-    """Fetch one goal page raw (name, status, relations). Read-only;
-    raises on failure."""
-
-    return _fetch_page(token, goal_id)
 
 
 def _fetch_page(token: str, page_id: str) -> dict:
@@ -93,7 +100,7 @@ def _current_goal_id(token: str, project_id: str) -> str | None:
 def _goal_projects_ids(token: str, goal_id: str) -> list[str]:
     """Read a goal page's goal-side Projects relation ids."""
 
-    page = fetch_goal_page(token, goal_id)
+    page = fetch_goal(token, goal_id)
     projects_prop = page.get("properties", {}).get("Projects", {})
     if projects_prop.get("type") != "relation":
         return []
@@ -137,6 +144,10 @@ def create_project(token: str, data_source_id: str, project: ProjectCreate) -> d
     sides (per docs/notion-goals-schema.md the project-side `Goal` relation
     is not auto-synced with the goal-side `Projects` relation the app
     reads), so the new project is visible on the goal page too.
+
+    A goal-side link failure after the page was created raises
+    GoalLinkError carrying the created page: the page exists, so a retry
+    must not re-create it.
     """
 
     properties: dict = {
@@ -161,7 +172,10 @@ def create_project(token: str, data_source_id: str, project: ProjectCreate) -> d
     page = res.json()
 
     if project.goal_id is not None:
-        _link_goal_side(token, project.goal_id, page["id"])
+        try:
+            _link_goal_side(token, project.goal_id, page["id"])
+        except requests.RequestException as error:
+            raise GoalLinkError(page["id"], str(error)) from error
     return page
 
 
@@ -169,10 +183,13 @@ def update_project(token: str, project_id: str, update: ProjectUpdate) -> bool:
     """PATCH a project page with only the deliberately edited properties.
 
     Fields left as UNSET are omitted entirely, so Notion preserves their
-    current values. A status edit never cascades to the project's tasks. A
-    goal-link change syncs both sides: the previous goal (read from the
-    project page) loses the project from its `Projects` relation and the
-    new goal gains it.
+    current values. A status edit never cascades to the project's tasks.
+
+    The goal-side sync repairs against `previous_goal_id` (the link the
+    editor saw) rather than the live page state, so it is idempotent: a
+    retry after a partial sync failure moves the project from the goal the
+    user saw to the goal they chose, and a fully-applied sync is a no-op
+    on both sides.
     """
 
     properties: dict = {}
@@ -194,9 +211,14 @@ def update_project(token: str, project_id: str, update: ProjectUpdate) -> bool:
         else:
             properties["Deadline"] = {"date": {"start": update.deadline.isoformat()}}
 
-    old_goal_id = None
+    previous_goal_id: str | None = None
     if update.goal_id is not UNSET:
-        old_goal_id = _current_goal_id(token, project_id)
+        if update.previous_goal_id is not UNSET:
+            # Trust the editor's view: a retry after a partial sync must
+            # not treat the already-applied PATCH as "nothing changed".
+            previous_goal_id = update.previous_goal_id
+        else:
+            previous_goal_id = _current_goal_id(token, project_id)
 
     res = requests.patch(
         url=f"{NOTION_API_URL}/pages/{project_id}",
@@ -205,9 +227,12 @@ def update_project(token: str, project_id: str, update: ProjectUpdate) -> bool:
     )
     res.raise_for_status()
 
-    if update.goal_id is not UNSET and old_goal_id != update.goal_id:
-        if old_goal_id is not None:
-            _unlink_goal_side(token, old_goal_id, project_id)
-        if update.goal_id is not None:
-            _link_goal_side(token, update.goal_id, project_id)
+    if update.goal_id is not UNSET and previous_goal_id != update.goal_id:
+        try:
+            if previous_goal_id is not None:
+                _unlink_goal_side(token, previous_goal_id, project_id)
+            if update.goal_id is not None:
+                _link_goal_side(token, update.goal_id, project_id)
+        except requests.RequestException as error:
+            raise GoalLinkError(project_id, str(error)) from error
     return True

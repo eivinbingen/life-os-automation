@@ -110,8 +110,9 @@ def main():
     goals_configured = bool(goals_data_source_id)
 
     projects_data_source_id = os.getenv("NOTION_PROJECTS_DATA_SOURCE_ID")
-    # One shared check gates project writes: a blank value must not wire a
-    # create parent against an empty id.
+    # The write callables are gated on the data source id: a blank value
+    # must not wire a create parent against an empty id. The endpoints
+    # themselves always register and answer 501 when the callable is None.
     projects_configured = bool(projects_data_source_id)
 
     def fetch_goal_detail(goal_id: str):
