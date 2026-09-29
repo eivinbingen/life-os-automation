@@ -9,8 +9,12 @@ import {
   shiftDay,
 } from "../../date-utils";
 import { TaskProjectLink } from "../../task-project-link";
+import { GoalForm } from "../../goal-form";
+import { ProjectForm } from "../../project-form";
 import type {
   CleanUpSummary,
+  DirectionGoal,
+  DirectionSummary,
   LookBackSummary,
   ReviewRecord,
   SectionProgress,
@@ -182,13 +186,15 @@ function CleanUpBody({
 
   const runAction = async (id: string, edits: Record<string, unknown>) => {
     if (pendingIds.has(id)) return;
-    setPendingIds(new Set([...pendingIds, id]));
+    // Functional updates: concurrent actions on other rows must not be
+    // wiped by this row's finally running with a stale closure.
+    setPendingIds((prev) => new Set([...prev, id]));
     setActionError(null);
     try {
       const { updateTask } = await import("../../actions");
       const result = await updateTask(id, edits);
       if (result.ok) {
-        setBacklogConfirmIds(new Set([...backlogConfirmIds].filter((x) => x !== id)));
+        setBacklogConfirmIds((prev) => new Set([...prev].filter((x) => x !== id)));
         onActionDone();
       } else {
         setActionError({ id, message: result.error });
@@ -196,7 +202,7 @@ function CleanUpBody({
     } catch {
       setActionError({ id, message: "The task could not be updated. Try again." });
     } finally {
-      setPendingIds(new Set([...pendingIds].filter((x) => x !== id)));
+      setPendingIds((prev) => new Set([...prev].filter((x) => x !== id)));
     }
   };
 
@@ -328,6 +334,350 @@ function CleanUpBody({
         </p>
       </div>
     </div>
+  );
+}
+
+function DirectionBody({
+  live,
+  isCompleted,
+  onRetry,
+  onActionDone,
+}: {
+  live?: { ok: true; summary: DirectionSummary } | { ok: false; error: string } | null;
+  isCompleted: boolean;
+  onRetry: () => void;
+  onActionDone: () => void;
+}) {
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  const [completeConfirmIds, setCompleteConfirmIds] = useState<Set<string>>(new Set());
+  const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null);
+  const [addProjectId, setAddProjectId] = useState<string | null>(null);
+  const [addGoalOpen, setAddGoalOpen] = useState(false);
+  const [addGoalPending, setAddGoalPending] = useState(false);
+  const [addGoalError, setAddGoalError] = useState<string | null>(null);
+  // Guards against a duplicate create before state updates land.
+  const addGoalInFlight = useRef(false);
+
+  if (!live || !live.ok) {
+    if (!live) {
+      // Nothing was fetched (completed review): neutral note, not an error.
+      return (
+        <p className="review-completed-note">
+          The live direction context is unavailable for completed reviews; the
+          review retains its answers.
+        </p>
+      );
+    }
+    return (
+      <div className="integration-alert" role="status">
+        <span className="alert-symbol" aria-hidden="true">!</span>
+        <span>{live.error}</span>
+        <button type="button" className="review-retry" onClick={onRetry}>
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  const summary = live.summary;
+  const failed = summary.statuses.filter((status) => !status.ok);
+
+  const runGoalAction = async (goal: DirectionGoal) => {
+    if (pendingIds.has(goal.id)) return;
+    // Functional updates: concurrent actions on other rows must not be
+    // wiped by this row's finally running with a stale closure.
+    setPendingIds((prev) => new Set([...prev, goal.id]));
+    setActionError(null);
+    try {
+      const { completeGoal } = await import("../../goal-actions");
+      const result = await completeGoal(goal.id);
+      if (result.ok) {
+        setCompleteConfirmIds((prev) => new Set([...prev].filter((x) => x !== goal.id)));
+        onActionDone();
+      } else {
+        setActionError({ id: goal.id, message: result.error });
+      }
+    } catch {
+      setActionError({ id: goal.id, message: "The goal could not be completed. Try again." });
+    } finally {
+      setPendingIds((prev) => new Set([...prev].filter((x) => x !== goal.id)));
+    }
+  };
+
+  return (
+    <div className="review-queue-wrap">
+      {failed.length > 0 ? (
+        <div className="integration-alert" role="status">
+          <span className="alert-symbol" aria-hidden="true">!</span>
+          <span>
+            {failed.map((status) => status.name).join(" and ")}{" "}
+            {failed.length === 1 ? "is" : "are"} unavailable. Some information may be
+            missing.
+          </span>
+          <button type="button" className="review-retry" onClick={onRetry}>
+            Try again
+          </button>
+        </div>
+      ) : summary.items.length === 0 ? (
+        <p className="review-queue-empty">No active goals right now.</p>
+      ) : (
+        <ul className="review-queue">
+          {summary.items.map((goal) => (
+            <li key={goal.id} className="review-queue-row">
+              <div className="review-queue-main">
+                <span className="review-queue-name">
+                  <a
+                    className="review-queue-name"
+                    href={`/goals/${goal.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {goal.name || "Untitled goal"}
+                  </a>
+                </span>
+                {goal.projects.length > 0 && (
+                  <span className="review-queue-project">
+                    <span>Projects</span>
+                    {goal.projects.map((project, index) => (
+                      <span key={project.id}>
+                        <TaskProjectLink
+                          projectId={project.id}
+                          projectName={project.name || "Untitled project"}
+                          openInNewTab
+                        />
+                        {index < goal.projects.length - 1 ? ", " : ""}
+                      </span>
+                    ))}
+                  </span>
+                )}
+                <div className="review-queue-meta">
+                  {goal.status_available && goal.status && (
+                    <span className="review-reason-chip">{goal.status}</span>
+                  )}
+                </div>
+              </div>
+              {!isCompleted && (
+                <div className="review-queue-actions">
+                  {goal.status !== "Done" && (
+                    <>
+                      <button
+                        type="button"
+                        className="review-queue-complete"
+                        disabled={pendingIds.has(goal.id)}
+                        onClick={() => setCompleteConfirmIds(new Set([...completeConfirmIds, goal.id]))}
+                      >
+                        Complete Goal
+                      </button>
+                      {completeConfirmIds.has(goal.id) && (
+                        <span className="review-queue-confirm" role="alertdialog" aria-label="Confirm completion">
+                          Sets the goal&apos;s status to Done; projects and tasks are unchanged.
+                          <button
+                            type="button"
+                            className="review-queue-confirm-yes"
+                            disabled={pendingIds.has(goal.id)}
+                            onClick={() => void runGoalAction(goal)}
+                          >
+                            {pendingIds.has(goal.id) ? "Working…" : "Complete goal"}
+                          </button>
+                          <button
+                            type="button"
+                            className="review-queue-confirm-no"
+                            onClick={() => setCompleteConfirmIds(new Set([...completeConfirmIds].filter((x) => x !== goal.id)))}
+                          >
+                            Cancel
+                          </button>
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        className="entity-action-button"
+                        disabled={pendingIds.has(goal.id)}
+                        onClick={() => setAddProjectId(goal.id)}
+                      >
+                        Add Project
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+              {actionError?.id === goal.id && (
+                <p className="review-action-error" role="alert">
+                  {actionError.message}
+                </p>
+              )}
+              {addProjectId === goal.id && (
+                <AddProjectDialog
+                  goalId={goal.id}
+                  goalName={goal.name || "Untitled goal"}
+                  onClose={() => setAddProjectId(null)}
+                  onSaved={() => {
+                    setAddProjectId(null);
+                    onActionDone();
+                  }}
+                />
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {summary.warnings.length > 0 && (
+        <div className="integration-alert" role="status">
+          <span className="alert-symbol" aria-hidden="true">!</span>
+          <span>{summary.warnings.join(" ")}</span>
+        </div>
+      )}
+
+      {!isCompleted && (
+        <div className="review-hygiene">
+          <p className="review-prompt">
+            Has anything changed? Is your direction still right?
+          </p>
+          <button
+            type="button"
+            className="entity-action-button"
+            disabled={addGoalPending}
+            onClick={() => setAddGoalOpen(true)}
+          >
+            Add Goal
+          </button>
+          {!addGoalOpen && addGoalError && (
+            <p className="review-action-error" role="alert">
+              {addGoalError}
+            </p>
+          )}
+        </div>
+      )}
+
+      {addGoalOpen && (
+        <AddGoalDialog
+          pending={addGoalPending}
+          error={addGoalError}
+          onClose={() => {
+            setAddGoalOpen(false);
+            setAddGoalError(null);
+          }}
+          onSave={(values) => {
+            if (addGoalInFlight.current) return;
+            addGoalInFlight.current = true;
+            setAddGoalPending(true);
+            setAddGoalError(null);
+            void (async () => {
+              try {
+                const { createGoal } = await import("../../goal-actions");
+                const edits: { name: string; status?: string; target_date?: string | null } = {
+                  name: values.name,
+                };
+                if (values.status !== "Not Started") edits.status = values.status;
+                if (values.target_date) edits.target_date = values.target_date;
+                const result = await createGoal(edits);
+                if (result.ok) {
+                  setAddGoalOpen(false);
+                  onActionDone();
+                } else {
+                  setAddGoalError(result.error);
+                }
+              } catch {
+                setAddGoalError("The goal could not be created. Try again.");
+              } finally {
+                addGoalInFlight.current = false;
+                setAddGoalPending(false);
+              }
+            })();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function AddProjectDialog({
+  goalId,
+  goalName,
+  onClose,
+  onSaved,
+}: {
+  goalId: string;
+  goalName: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Guards against a duplicate create before state updates land.
+  const inFlight = useRef(false);
+
+  return (
+    <ProjectForm
+      heading="Add project"
+      kicker="ADD PROJECT"
+      lockedGoal={{ id: goalId, name: goalName }}
+      pending={pending}
+      error={error}
+      onSave={(values) => {
+        if (inFlight.current) return;
+        inFlight.current = true;
+        setPending(true);
+        setError(null);
+        void (async () => {
+          try {
+            const { createProject } = await import("../../projects-actions");
+            const edits: { name: string; status: string; goal_id?: string; deadline?: string | null } = {
+              name: values.name,
+              status: values.status,
+            };
+            if (values.goal_id) edits.goal_id = values.goal_id;
+            if (values.deadline) edits.deadline = values.deadline;
+            const result = await createProject(edits);
+            if (result.ok) {
+              // The page was created even when the goal-side link failed;
+              // close, but surface the partial failure instead of assuming
+              // the row will show the new project.
+              onSaved();
+              if (result.goalLinkError) {
+                setError(
+                  "The project was created but linking it to this goal failed. " +
+                    "Link it from the project page later.",
+                );
+              }
+            } else {
+              // Failed create: keep the dialog open; the form retains the
+              // entered fields for retry.
+              setError(result.error);
+            }
+          } catch {
+            setError("The project could not be created. Try again.");
+          } finally {
+            inFlight.current = false;
+            setPending(false);
+          }
+        })();
+      }}
+      onClose={onClose}
+    />
+  );
+}
+
+function AddGoalDialog({
+  pending,
+  error,
+  onClose,
+  onSave,
+}: {
+  pending: boolean;
+  error: string | null;
+  onClose: () => void;
+  onSave: (values: { name: string; status: string; target_date: string | null }) => void;
+}) {
+  return (
+    <GoalForm
+      heading="Add goal"
+      kicker="ADD GOAL"
+      pending={pending}
+      error={error}
+      onSave={(values) => onSave(values)}
+      onClose={onClose}
+    />
   );
 }
 
@@ -568,12 +918,14 @@ export function ReviewBoard({
   historyError,
   lookBack,
   cleanUp,
+  direction,
 }: {
   initialReview: ReviewRecord;
   history: ReviewRecord[];
   historyError?: string | null;
   lookBack?: { ok: true; summary: LookBackSummary } | { ok: false; error: string } | null;
   cleanUp?: { ok: true; summary: CleanUpSummary } | { ok: false; error: string } | null;
+  direction?: { ok: true; summary: DirectionSummary } | { ok: false; error: string } | null;
 }) {
   const [review, setReview] = useState(initialReview);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({ look_back: true, commit: true });
@@ -624,6 +976,21 @@ export function ReviewBoard({
       setRetryingCleanUp(false);
     }
   }, [retryingCleanUp, review.week_start]);
+
+  // The direction summary is fetched server-side; a client retry re-runs
+  // the same server action so a transient failure is recoverable in place.
+  const [liveDirection, setLiveDirection] = useState(direction ?? null);
+  const [retryingDirection, setRetryingDirection] = useState(false);
+  const retryDirection = useCallback(async () => {
+    if (retryingDirection) return;
+    setRetryingDirection(true);
+    try {
+      const { fetchDirection } = await import("./review-actions");
+      setLiveDirection(await fetchDirection(review.week_start));
+    } finally {
+      setRetryingDirection(false);
+    }
+  }, [retryingDirection, review.week_start]);
 
   const persist = useCallback(
     async (
@@ -838,10 +1205,12 @@ export function ReviewBoard({
         onToggle={() => toggleSection("direction")}
         onPass={() => markPassed("direction")}
       >
-        <p className="review-prompt">
-          Has anything changed? Is your direction still right? The active-goal review with
-          Add Goal and Add Project actions arrives in a later slice.
-        </p>
+        <DirectionBody
+          live={liveDirection}
+          isCompleted={isCompleted}
+          onRetry={() => void retryDirection()}
+          onActionDone={() => void retryDirection()}
+        />
       </ReviewSection>
 
       <ReviewSection

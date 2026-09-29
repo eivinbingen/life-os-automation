@@ -21,7 +21,8 @@ def _normalize_goal(page: dict) -> tuple:
     status_available = False
     status_prop = props.get("Status", {})
     if status_prop.get("type") == "status":
-        status = status_prop.get("status", {}).get("name")
+        status_value = status_prop.get("status") or {}
+        status = status_value.get("name")
         status_available = status is not None
 
     area_id = None

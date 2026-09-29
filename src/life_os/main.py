@@ -16,8 +16,10 @@ from life_os.integrations.google_calendar import (
 from life_os.integrations.notion_courses import fetch_studies_overview
 from life_os.integrations.notion_goals import (
     create_goal,
+    fetch_active_goal_pages,
     fetch_active_goals,
     fetch_goal,
+    fetch_goals_for_project,
     fetch_projects_by_ids,
     update_goal,
 )
@@ -91,9 +93,16 @@ def main():
             page_size=100,
         )
 
+    goals_data_source_id = os.getenv("NOTION_GOALS_DATA_SOURCE_ID")
+    # One shared check gates both goal reads and writes: a blank value
+    # must not wire a query or a create parent against an empty id.
+    goals_configured = bool(goals_data_source_id)
+
     # The project detail read needs only the token and the tasks data
     # source (project page + tasks-by-project query), so it is enabled
-    # whenever Today works; the optional projects env var is unused.
+    # whenever Today works; the optional projects env var is unused. The
+    # goal-side lookup needs the goals data source and degrades when it is
+    # not configured.
     def fetch_project_detail(project_id: str):
         return _get_project_detail(
             project_id,
@@ -102,12 +111,12 @@ def main():
                 fetch_tasks_for_project, token, data_source_id, page_size=100
             ),
             fetch_goal_name=partial(_fetch_project_name, token),
+            fetch_goals_for_project=(
+                partial(fetch_goals_for_project, token, goals_data_source_id, page_size=100)
+                if goals_configured
+                else None
+            ),
         )
-
-    goals_data_source_id = os.getenv("NOTION_GOALS_DATA_SOURCE_ID")
-    # One shared check gates both goal reads and writes: a blank value
-    # must not wire a query or a create parent against an empty id.
-    goals_configured = bool(goals_data_source_id)
 
     projects_data_source_id = os.getenv("NOTION_PROJECTS_DATA_SOURCE_ID")
     # The write callables are gated on the data source id: a blank value
@@ -125,6 +134,9 @@ def main():
 
     def fetch_goals_active():
         return fetch_active_goals(token, goals_data_source_id, page_size=100)
+
+    def fetch_goals_active_pages():
+        return fetch_active_goal_pages(token, goals_data_source_id, page_size=100)
 
     # The review store resolves from the repository root regardless of the
     # launch working directory.
@@ -158,6 +170,10 @@ def main():
             else None
         ),
         update_project=partial(update_project, token) if projects_configured else None,
+        fetch_active_goal_pages=(
+            fetch_goals_active_pages if goals_configured else None
+        ),
+        resolve_projects=partial(fetch_projects_by_ids, token),
         reviews=reviews,
     )
     uvicorn.run(app, host="127.0.0.1", port=8000)

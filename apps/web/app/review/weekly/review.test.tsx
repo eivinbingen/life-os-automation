@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CleanUpSummary, LookBackSummary, ReviewRecord } from "./review-actions";
+import type { CleanUpSummary, DirectionSummary, LookBackSummary, ReviewRecord } from "./review-actions";
 import { ReviewBoard } from "./review-board";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -90,6 +90,19 @@ const completeReview = vi.hoisted(() => vi.fn());
 const fetchLookBackAction = vi.hoisted(() => vi.fn());
 const updateTaskAction = vi.hoisted(() => vi.fn());
 vi.mock("../../actions", () => ({ updateTask: updateTaskAction, updateTaskDone: updateTaskAction }));
+
+const createGoalAction = vi.hoisted(() => vi.fn());
+const completeGoalAction = vi.hoisted(() => vi.fn());
+const createProjectAction = vi.hoisted(() => vi.fn());
+vi.mock("../../goal-actions", () => ({
+  createGoal: createGoalAction,
+  updateGoal: vi.fn(),
+  completeGoal: completeGoalAction,
+}));
+vi.mock("../../projects-actions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../projects-actions")>();
+  return { ...actual, createProject: createProjectAction };
+});
 
 vi.mock("./review-actions", async () => {
   const actual = await vi.importActual<typeof import("./review-actions")>("./review-actions");
@@ -580,5 +593,202 @@ describe("Clean Up queue", () => {
     expect(screen.getByText("Finish case study")).toBeTruthy();
     expect(screen.queryByText("Complete")).toBeNull();
     expect(screen.queryByText("Reschedule")).toBeNull();
+  });
+});
+
+describe("Direction stage", () => {
+  const directionSummary: DirectionSummary = {
+    week_start: "2026-09-14",
+    captured_at: "2026-09-27T09:00:00+02:00",
+    timezone: "Europe/Zurich",
+    items: [
+      {
+        id: "g1",
+        name: "Ship the app",
+        status: "Active",
+        status_available: true,
+        projects: [
+          { id: "project-1", name: "Life OS" },
+          { id: "project-2", name: "Second project" },
+        ],
+      },
+      {
+        id: "g2",
+        name: "Write thesis",
+        status: "Active",
+        status_available: true,
+        projects: [],
+      },
+    ],
+    statuses: [{ name: "Notion", ok: true, error: null }],
+    warnings: [],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    fetchLookBackAction.mockResolvedValue({ ok: true, summary });
+    createGoalAction.mockResolvedValue({ ok: true, goalId: "new-goal" });
+    completeGoalAction.mockResolvedValue({ ok: true });
+    createProjectAction.mockResolvedValue({ ok: true, projectId: "new-project" });
+  });
+
+  async function renderDirectionBoard(
+    directionProp:
+      | { ok: true; summary: typeof directionSummary }
+      | { ok: false; error: string } = { ok: true, summary: directionSummary },
+  ) {
+    const user = userEvent.setup();
+    render(
+      <ReviewBoard
+        initialReview={draft}
+        history={[completed]}
+        lookBack={{ ok: true, summary }}
+        direction={directionProp}
+      />,
+    );
+    // The Direction section starts collapsed; expand it (look-back starts
+    // open, so Expand buttons are clean-up, direction, ahead in order).
+    const expandButtons = screen.getAllByText("Expand");
+    await user.click(expandButtons[1]);
+    return user;
+  }
+
+  it("renders goal rows with status chips and project links", async () => {
+    await renderDirectionBoard();
+
+    expect(screen.getByText("Ship the app")).toBeTruthy();
+    expect(screen.getByText("Write thesis")).toBeTruthy();
+    expect(screen.getAllByText("Active").length).toBe(2);
+    expect(screen.getByText("Life OS")).toBeTruthy();
+    expect(screen.getByText("Second project")).toBeTruthy();
+  });
+
+  it("distinguishes zero goals from unavailable", async () => {
+    await renderDirectionBoard({
+      ok: true,
+      summary: { ...directionSummary, items: [] },
+    });
+    expect(screen.getByText("No active goals right now.")).toBeTruthy();
+
+    cleanup();
+
+    await renderDirectionBoard({ ok: false, error: "The Life OS service could not be reached." });
+    expect(screen.getByText(/could not be reached/)).toBeTruthy();
+    expect(screen.getByText("Try again")).toBeTruthy();
+  });
+
+  it("keeps a goal without projects visible", async () => {
+    await renderDirectionBoard();
+
+    expect(screen.getByText("Write thesis")).toBeTruthy();
+  });
+
+  it("completes a goal with a status-only edit and no project or task calls", async () => {
+    const user = await renderDirectionBoard();
+
+    await user.click(screen.getAllByText("Complete Goal")[0]);
+    expect(completeGoalAction).not.toHaveBeenCalled();
+
+    expect(screen.getByText(/Sets the goal's status to Done/)).toBeTruthy();
+    await user.click(screen.getByText("Complete goal", { selector: ".review-queue-confirm-yes" }));
+
+    expect(completeGoalAction).toHaveBeenCalledTimes(1);
+    expect(completeGoalAction).toHaveBeenCalledWith("g1");
+    expect(updateTaskAction).not.toHaveBeenCalled();
+    expect(createProjectAction).not.toHaveBeenCalled();
+  });
+
+  it("opens the Add Project form from a goal row", async () => {
+    const user = await renderDirectionBoard();
+
+    await user.click(screen.getAllByText("Add Project")[0]);
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/Linked to goal: Ship the app/)).toBeTruthy();
+  });
+
+  it("creates a project from the dialog with the goal prefill", async () => {
+    const user = await renderDirectionBoard();
+
+    await user.click(screen.getAllByText("Add Project")[0]);
+    const dialog = screen.getByRole("dialog");
+    await user.type(within(dialog).getByLabelText("Name"), "New project");
+    await user.click(within(dialog).getByText("Save"));
+
+    await waitFor(() => {
+      expect(createProjectAction).toHaveBeenCalled();
+    });
+    const [edits] = createProjectAction.mock.calls[0];
+    expect(edits.name).toBe("New project");
+    expect(edits.goal_id).toBe("g1");
+  });
+
+  it("opens Add Goal below the list, also at zero goals", async () => {
+    const user = await renderDirectionBoard({
+      ok: true,
+      summary: { ...directionSummary, items: [] },
+    });
+
+    expect(screen.getByText("Has anything changed? Is your direction still right?")).toBeTruthy();
+    await user.click(screen.getByText("Add Goal"));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByLabelText("Name")).toBeTruthy();
+  });
+
+  it("creates a goal from the dialog and refreshes the direction", async () => {
+    const user = await renderDirectionBoard();
+
+    await user.click(screen.getByText("Add Goal"));
+    const dialog = screen.getByRole("dialog");
+    await user.type(within(dialog).getByLabelText("Name"), "New goal");
+    await user.click(within(dialog).getByText("Save"));
+
+    await waitFor(() => {
+      expect(createGoalAction).toHaveBeenCalled();
+    });
+    const [edits] = createGoalAction.mock.calls[0];
+    expect(edits.name).toBe("New goal");
+  });
+
+  it("keeps the wins and reflection textareas through actions", async () => {
+    const user = await renderDirectionBoard();
+
+    const wins = screen.getByLabelText("Wins");
+    await user.type(wins, "Direction held");
+    await user.click(screen.getAllByText("Complete Goal")[0]);
+
+    expect((screen.getByLabelText("Wins") as HTMLTextAreaElement).value).toBe("Direction held");
+    expect(screen.getByLabelText("Reflection (optional)")).toBeTruthy();
+  });
+
+  it("shows the per-row error when the completion fails", async () => {
+    const user = await renderDirectionBoard();
+    completeGoalAction.mockResolvedValue({ ok: false, error: "Notion could not be reached." });
+
+    await user.click(screen.getAllByText("Complete Goal")[0]);
+    await user.click(screen.getByText("Complete goal", { selector: ".review-queue-confirm-yes" }));
+
+    expect(await screen.findByText("Notion could not be reached.")).toBeTruthy();
+    expect(screen.getByText("Ship the app")).toBeTruthy();
+  });
+
+  it("hides row actions and Add Goal on a completed review", async () => {
+    const user = userEvent.setup();
+    render(
+      <ReviewBoard
+        initialReview={completed}
+        history={[]}
+        lookBack={{ ok: true, summary }}
+        direction={{ ok: true, summary: directionSummary }}
+      />,
+    );
+    const expandButtons = screen.getAllByText("Expand");
+    await user.click(expandButtons[1]);
+
+    expect(screen.getByText("Ship the app")).toBeTruthy();
+    expect(screen.queryByText("Complete Goal")).toBeNull();
+    expect(screen.queryByText("Add Project")).toBeNull();
+    expect(screen.queryByText("Add Goal")).toBeNull();
   });
 });

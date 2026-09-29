@@ -14,6 +14,9 @@ from life_os.models.courses import (
 from life_os.models.courses import (
     StudiesOverview as DomainStudiesOverview,
 )
+from life_os.models.direction import (
+    DirectionSummary as DomainDirectionSummary,
+)
 from life_os.models.finance import (
     FinanceReview,
     InvalidCategoryMappingError,
@@ -44,6 +47,7 @@ from life_os.models.project import ProjectDetail as DomainProjectDetail
 from life_os.models.project import ProjectUpdate as DomainProjectUpdate
 from life_os.models.weekly_review import WeeklyReview as DomainWeeklyReview
 from life_os.services.clean_up import get_clean_up
+from life_os.services.direction import get_direction
 from life_os.services.finance import format_mapping_problems
 from life_os.services.goals import GoalNotFound
 from life_os.services.look_back import get_look_back
@@ -416,6 +420,8 @@ def create_app(
     update_goal: Callable[[str, DomainGoalUpdate], bool] | None = None,
     create_project: Callable[[ProjectCreate], dict] | None = None,
     update_project: Callable[[str, DomainProjectUpdate], bool] | None = None,
+    fetch_active_goal_pages: Callable[[], list[dict]] | None = None,
+    resolve_projects: Callable[[list[str]], tuple] | None = None,
     reviews: WeeklyReviewRepository | None = None,
 ) -> FastAPI:
 
@@ -467,6 +473,22 @@ def create_app(
                 raise HTTPException(
                     status_code=502,
                     detail=f"The clean-up queue could not be read: {error}",
+                ) from error
+
+        @app.get("/reviews/weekly/direction")
+        def direction_endpoint(week_start: date) -> DomainDirectionSummary:
+            if fetch_active_goal_pages is None or resolve_projects is None:
+                raise HTTPException(
+                    status_code=501,
+                    detail="The direction summary is not configured on this service.",
+                )
+            try:
+                monday = normalize_week_start(week_start).isoformat()
+                return get_direction(monday, fetch_active_goal_pages, resolve_projects)
+            except (HTTPError, RequestException, ValueError) as error:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"The direction summary could not be read: {error}",
                 ) from error
 
         @app.get("/reviews/weekly")
