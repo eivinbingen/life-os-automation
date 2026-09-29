@@ -22,8 +22,10 @@ from life_os.integrations.notion_goals import (
     update_goal,
 )
 from life_os.integrations.notion_projects import (
+    create_project,
     fetch_project,
     fetch_tasks_for_project,
+    update_project,
 )
 from life_os.integrations.notion_tasks import (
     _fetch_project_name,
@@ -107,6 +109,12 @@ def main():
     # must not wire a query or a create parent against an empty id.
     goals_configured = bool(goals_data_source_id)
 
+    projects_data_source_id = os.getenv("NOTION_PROJECTS_DATA_SOURCE_ID")
+    # The write callables are gated on the data source id: a blank value
+    # must not wire a create parent against an empty id. The endpoints
+    # themselves always register and answer 501 when the callable is None.
+    projects_configured = bool(projects_data_source_id)
+
     def fetch_goal_detail(goal_id: str):
         return _get_goal_detail(
             goal_id,
@@ -144,6 +152,12 @@ def main():
             partial(create_goal, token, goals_data_source_id) if goals_configured else None
         ),
         update_goal=partial(update_goal, token) if goals_configured else None,
+        create_project=(
+            partial(create_project, token, projects_data_source_id)
+            if projects_configured
+            else None
+        ),
+        update_project=partial(update_project, token) if projects_configured else None,
         reviews=reviews,
     )
     uvicorn.run(app, host="127.0.0.1", port=8000)

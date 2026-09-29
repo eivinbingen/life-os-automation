@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { formatItemDate, formatStripDate } from "../../date-utils";
 import {
@@ -9,9 +10,18 @@ import {
   TaskCompletionProvider,
 } from "../../task-completion";
 import { TaskCheckbox } from "../../task-checkbox";
+import { updateProject } from "../../projects-actions";
+import { ProjectForm } from "../../project-form";
+import type { GoalOption } from "../../project-form";
 import type { ProjectDetail } from "../../projects-actions";
 
-export function ProjectDetailBoard({ project }: { project: ProjectDetail }) {
+export function ProjectDetailBoard({
+  project,
+  goalOptions,
+}: {
+  project: ProjectDetail;
+  goalOptions: GoalOption[];
+}) {
   const failed = project.statuses.filter((status) => !status.ok);
   const sorted = useMemo(
     () =>
@@ -20,6 +30,60 @@ export function ProjectDetailBoard({ project }: { project: ProjectDetail }) {
       ),
     [project.tasks],
   );
+
+  const router = useRouter();
+  const [editOpen, setEditOpen] = useState(false);
+  const [editPending, setEditPending] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  // Guards against a duplicate write before the disabled state lands.
+  const editInFlight = useRef(false);
+
+  async function saveEdit(
+    _values: { name: string; status: string; goal_id: string | null; deadline: string | null },
+    changed: { name?: string; status?: string; goal_id?: string | null; deadline?: string | null },
+  ) {
+    if (editInFlight.current) return;
+    if (Object.keys(changed).length === 0) {
+      // Saving without any change is a no-op, not an error: close without
+      // an external write.
+      setEditOpen(false);
+      return;
+    }
+    editInFlight.current = true;
+    setEditPending(true);
+    setEditError(null);
+    try {
+      // previous_goal_id lets the backend repair the goal-side relation
+      // idempotently if the sync partially failed.
+      const edits: {
+        name?: string;
+        status?: string;
+        goal_id?: string | null;
+        previous_goal_id?: string | null;
+        deadline?: string | null;
+      } = { ...changed };
+      if ("goal_id" in changed) edits.previous_goal_id = project.goal_id;
+      const result = await updateProject(project.id, edits);
+      if (result.ok) {
+        setEditOpen(false);
+        if (result.goalLinkError) {
+          setEditError(
+            "Saved, but the goal link could not be updated. Try saving the goal link again.",
+          );
+        } else {
+          router.refresh();
+        }
+      } else {
+        // Failed save: keep the entered edits for retry, show the error.
+        setEditError(result.error);
+      }
+    } catch {
+      setEditError("The project could not be saved. Try again.");
+    } finally {
+      editInFlight.current = false;
+      setEditPending(false);
+    }
+  }
 
   return (
     <TaskCompletionProvider tasks={project.tasks}>
@@ -33,6 +97,16 @@ export function ProjectDetailBoard({ project }: { project: ProjectDetail }) {
             <p className="intro-copy">
               The project&apos;s verified context and open tasks from Notion.
             </p>
+          </div>
+          <div className="review-section-controls">
+            <button
+              type="button"
+              className="entity-action-button"
+              onClick={() => setEditOpen(true)}
+              disabled={editPending}
+            >
+              Edit project
+            </button>
           </div>
         </section>
 
@@ -122,9 +196,27 @@ export function ProjectDetailBoard({ project }: { project: ProjectDetail }) {
           )}
         </section>
 
+        {editOpen && (
+          <ProjectForm
+            heading="Edit project"
+            kicker="EDIT PROJECT"
+            initial={{
+              name: project.name ?? "",
+              status: project.status ?? "Planned",
+              goal_id: project.goal_id,
+              deadline: project.deadline,
+            }}
+            goalOptions={goalOptions}
+            pending={editPending}
+            error={editError}
+            onSave={(values, changed) => void saveEdit(values, changed)}
+            onClose={() => setEditOpen(false)}
+          />
+        )}
+
         <footer className="dashboard-footer">
           <span>Life OS <span className="footer-separator">/</span> Project</span>
-          <span className="footer-status"><span className="footer-status-dot" />Read-only workspace</span>
+          <span className="footer-status"><span className="footer-status-dot" />Project workspace</span>
         </footer>
       </div>
     </TaskCompletionProvider>

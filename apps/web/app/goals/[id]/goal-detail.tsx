@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 import { completeGoal, updateGoal } from "../../goal-actions";
 import { GoalForm } from "../../goal-form";
+import { createProject } from "../../projects-actions";
+import { ProjectForm } from "../../project-form";
 import { formatStripDate } from "../../date-utils";
 import type { GoalDetail } from "../../goals-actions";
 import { TaskProjectLink } from "../../task-project-link";
@@ -26,6 +28,51 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
   const [completeError, setCompleteError] = useState<string | null>(null);
   // Guards against a duplicate completion write before state updates land.
   const completeInFlight = useRef(false);
+  const [addProjectOpen, setAddProjectOpen] = useState(false);
+  const [addProjectPending, setAddProjectPending] = useState(false);
+  const [addProjectError, setAddProjectError] = useState<string | null>(null);
+  const addProjectInFlight = useRef(false);
+
+  async function saveNewProject(
+    values: { name: string; status: string; goal_id: string | null; deadline: string | null },
+  ) {
+    if (addProjectInFlight.current) return;
+    addProjectInFlight.current = true;
+    setAddProjectPending(true);
+    setAddProjectError(null);
+    try {
+      const edits: {
+        name: string;
+        status: string;
+        goal_id?: string | null;
+        deadline?: string | null;
+      } = { name: values.name, status: values.status };
+      if (values.goal_id) edits.goal_id = values.goal_id;
+      if (values.deadline) edits.deadline = values.deadline;
+      const result = await createProject(edits);
+      if (result.ok) {
+        setAddProjectOpen(false);
+        // The page exists even when the goal-side link failed; opening it
+        // beats inviting a duplicate re-create.
+        if (result.goalLinkError) {
+          setAddProjectError(
+            "The project was created but linking it to this goal failed. " +
+              "Link it from the project page later.",
+          );
+          router.push(`/projects/${result.projectId}`);
+        } else {
+          router.push(`/projects/${result.projectId}`);
+        }
+      } else {
+        setAddProjectError(result.error);
+      }
+    } catch {
+      setAddProjectError("The project could not be created. Try again.");
+    } finally {
+      addProjectInFlight.current = false;
+      setAddProjectPending(false);
+    }
+  }
 
   async function saveEdit(
     _values: { name: string; status: string; target_date: string | null },
@@ -90,9 +137,19 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
           </p>
         </div>
         <div className="review-section-controls">
+          {goal.status !== "Done" && !confirmingComplete && (
+            <button
+              type="button"
+              className="entity-action-button review-queue-complete"
+              onClick={() => setConfirmingComplete(true)}
+              disabled={completePending}
+            >
+              Complete goal
+            </button>
+          )}
           <button
             type="button"
-            className="review-advance"
+            className="entity-action-button"
             onClick={() => setEditOpen(true)}
             disabled={editPending}
           >
@@ -168,18 +225,7 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
             Cancel
           </button>
         </div>
-      ) : (
-        <div className="review-section-controls">
-          <button
-            type="button"
-            className="review-queue-complete"
-            onClick={() => setConfirmingComplete(true)}
-            disabled={completePending}
-          >
-            Complete goal
-          </button>
-        </div>
-      )}
+      ) : null}
       {completeError && (
         <p className="review-action-error" role="alert">
           {completeError}
@@ -192,7 +238,19 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
             <span className="section-kicker">NOTION</span>
             <h2 id="goal-projects-heading">Related projects</h2>
           </div>
-          <span className="count-badge">{goal.projects.length}</span>
+          <div className="review-section-controls">
+            {goal.status !== "Done" && (
+              <button
+                type="button"
+                className="entity-action-button review-queue-complete"
+                onClick={() => setAddProjectOpen(true)}
+                disabled={addProjectPending}
+              >
+                Add project
+              </button>
+            )}
+            <span className="count-badge">{goal.projects.length}</span>
+          </div>
         </div>
         {goal.projects.length === 0 ? (
           <p className="review-empty-note">No projects linked to this goal yet.</p>
@@ -210,6 +268,11 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
             ))}
           </ul>
         )}
+        {addProjectError && (
+          <p className="review-action-error" role="alert">
+            {addProjectError}
+          </p>
+        )}
       </section>
 
       {editOpen && (
@@ -225,6 +288,22 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
           error={editError}
           onSave={(values, changed) => void saveEdit(values, changed)}
           onClose={() => setEditOpen(false)}
+        />
+      )}
+
+      {addProjectOpen && (
+        <ProjectForm
+          heading="Add project"
+          kicker="ADD PROJECT"
+          initial={undefined}
+          lockedGoal={{ id: goal.id, name: goal.name }}
+          pending={addProjectPending}
+          error={addProjectError}
+          onSave={(values) => void saveNewProject(values)}
+          onClose={() => {
+            setAddProjectOpen(false);
+            setAddProjectError(null);
+          }}
         />
       )}
 

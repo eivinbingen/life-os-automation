@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 
+import { fetchActiveGoals } from "../../goals-actions";
 import { fetchProjectDetail } from "../../projects-actions";
 import { ProjectDetailBoard } from "./project-detail";
 
@@ -13,7 +14,10 @@ export default async function ProjectPage({
   await connection();
 
   const { id } = await params;
-  const result = await fetchProjectDetail(id);
+  const [result, goalOptions] = await Promise.all([
+    fetchProjectDetail(id),
+    fetchActiveGoals(),
+  ]);
 
   if (!result.ok) {
     return (
@@ -37,5 +41,5 @@ export default async function ProjectPage({
     );
   }
 
-  return <ProjectDetailBoard project={result.project} />;
+  return <ProjectDetailBoard project={result.project} goalOptions={goalOptions} />;
 }

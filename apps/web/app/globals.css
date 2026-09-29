@@ -401,6 +401,12 @@ body { margin: 0; min-height: 100vh; background: var(--paper); color: var(--ink)
 .review-queue-actions button:focus-visible { outline: 2px solid #5c9a77; outline-offset: 2px; }
 .review-queue-actions button:disabled { cursor: wait; opacity: .6; }
 .review-queue-complete { border-color: #bcd4c2 !important; background: #eef5ec !important; color: #3c6b50 !important; }
+/* Entity views render review-queue-complete outside .review-queue-actions,
+ * which is where the base button styles come from on the review board. */
+.entity-action-button { min-height: 34px; padding: 0 13px; border: 1px solid #dce7df; border-radius: 8px; background: #fff; color: #3f5348; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: background-color 140ms ease, color 140ms ease; }
+.entity-action-button:hover:not(:disabled) { background: #eef5ed; color: var(--deep); }
+.entity-action-button:focus-visible { outline: 2px solid #5c9a77; outline-offset: 2px; }
+.entity-action-button:disabled { cursor: wait; opacity: .6; }
 .review-queue-confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 7px 11px; border: 1px solid #f0dfbf; border-radius: 8px; background: #fff7e7; color: #855520; font-size: 11.5px; line-height: 1.5; }
 .review-queue-confirm-yes { border-color: #d69d48 !important; background: #d69d48 !important; color: #fff !important; }
 .review-queue-confirm-no { border-color: #dce7df !important; background: #fff !important; }

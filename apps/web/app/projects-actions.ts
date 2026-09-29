@@ -1,6 +1,10 @@
 "use server";
 
-import { fetchEntityDetail, type EntityFetchError } from "./entity-fetch";
+import {
+  fetchEntityDetail,
+  type EntityFetchError,
+} from "./entity-fetch";
+import { writeJson } from "./entity-write";
 
 export type ProjectTask = {
   id: string;
@@ -36,4 +40,74 @@ export async function fetchProjectDetail(
     return { ok: true, project: result.data };
   }
   return result;
+}
+
+export type ProjectEdits = {
+  name?: string;
+  status?: string;
+  goal_id?: string | null;
+  previous_goal_id?: string | null;
+  deadline?: string | null;
+};
+
+/** A successful create always carries the new project id; a
+ * goal_link_error means the page exists but the goal-side link failed
+ * (the UI opens the project instead of inviting a duplicate re-create). */
+export type CreateProjectResult =
+  | { ok: true; projectId: string; goalLinkError?: string }
+  | { ok: false; error: string };
+
+export type UpdateProjectResult =
+  | { ok: true; goalLinkError?: string }
+  | { ok: false; error: string };
+
+export async function createProject(
+  edits: ProjectEdits,
+): Promise<CreateProjectResult> {
+  // Only deliberately set keys are sent: the backend preserves every
+  // omitted property, and the schema defaults Status to Planned.
+  const body: Record<string, unknown> = { name: edits.name };
+  if (edits.status !== undefined) body.status = edits.status;
+  if (edits.goal_id !== undefined) body.goal_id = edits.goal_id;
+  if (edits.deadline !== undefined) body.deadline = edits.deadline;
+
+  const result = await writeJson("/projects", "POST", body);
+  if (!result.ok) return result;
+  const created = result.data as {
+    id?: string;
+    goal_link_error?: string;
+  };
+  if (!created.id) {
+    return { ok: false, error: "The project was created but no identifier came back." };
+  }
+  return {
+    ok: true,
+    projectId: created.id,
+    goalLinkError: created.goal_link_error,
+  };
+}
+
+export async function updateProject(
+  projectId: string,
+  edits: ProjectEdits,
+): Promise<UpdateProjectResult> {
+  // Only deliberately edited keys are sent: the backend preserves every
+  // omitted property, so untouched fields keep their Notion values.
+  const body: Record<string, unknown> = {};
+  if (edits.name !== undefined) body.name = edits.name;
+  if (edits.status !== undefined) body.status = edits.status;
+  if (edits.goal_id !== undefined) body.goal_id = edits.goal_id;
+  if (edits.previous_goal_id !== undefined) {
+    body.previous_goal_id = edits.previous_goal_id;
+  }
+  if (edits.deadline !== undefined) body.deadline = edits.deadline;
+
+  const result = await writeJson(
+    `/projects/${encodeURIComponent(projectId)}`,
+    "PATCH",
+    body,
+  );
+  if (!result.ok) return result;
+  const saved = result.data as { goal_link_error?: string };
+  return { ok: true, goalLinkError: saved.goal_link_error };
 }

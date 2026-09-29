@@ -58,14 +58,18 @@ def test_project_endpoint_returns_normalized_detail():
     assert body["statuses"] == []
 
 
-def test_project_endpoint_absent_without_callable():
+def test_project_endpoint_unconfigured_answers_501():
+    """The read route always registers (alongside the unconditional write
+    routes): without the callable it answers 501 "not configured"."""
+
     fetch_events, fetch_tasks, update = _minimal_fetchers()
 
     client = TestClient(create_app(fetch_events, fetch_tasks, update))
 
     response = client.get("/projects/project-1")
 
-    assert response.status_code == 404
+    assert response.status_code == 501
+    assert "not configured" in response.json()["detail"]
 
 
 def test_project_endpoint_degrades_per_source():

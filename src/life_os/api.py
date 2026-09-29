@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, field_validator, model_validator
 from requests import HTTPError, RequestException
 
+from life_os.integrations.notion_projects import GoalLinkError
 from life_os.models.calendar import CalendarEvent
 from life_os.models.clean_up import CleanUpSummary as DomainCleanUpSummary
 from life_os.models.courses import (
@@ -38,7 +39,9 @@ from life_os.models.notion import (
 from life_os.models.notion import (
     TaskUpdate as DomainTaskUpdate,
 )
+from life_os.models.project import ProjectCreate
 from life_os.models.project import ProjectDetail as DomainProjectDetail
+from life_os.models.project import ProjectUpdate as DomainProjectUpdate
 from life_os.models.weekly_review import WeeklyReview as DomainWeeklyReview
 from life_os.services.clean_up import get_clean_up
 from life_os.services.finance import format_mapping_problems
@@ -110,6 +113,10 @@ class CreateTaskRequest(BaseModel):
 # (docs/notion-goals-schema.md); nothing outside this set is writable.
 GOAL_STATUSES = {"Not Started", "Active", "Failed", "Done"}
 
+# The finite status options from the inspected Projects schema
+# (docs/notion-goals-schema.md); nothing outside this set is writable.
+PROJECT_STATUSES = {"Planned", "Waiting", "Active", "Dropped", "Done"}
+
 
 class CreateGoalRequest(BaseModel):
     """What a goal creation request means to write; Notion remains
@@ -180,6 +187,90 @@ class GoalUpdate(BaseModel):
             area_id=self.area_id if "area_id" in self.model_fields_set else UNSET,
             target_date=(
                 self.target_date if "target_date" in self.model_fields_set else UNSET
+            ),
+        )
+
+
+class CreateProjectRequest(BaseModel):
+    """What a project creation request means to write; Notion remains
+    authoritative. No required goal — the goal link is optional per the
+    source contract."""
+
+    name: str
+    status: str | None = None
+    goal_id: str | None = None
+    deadline: date | None = None
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Project name must not be blank")
+        return value.strip()
+
+    @field_validator("status")
+    @classmethod
+    def status_in_schema(cls, value: str | None) -> str | None:
+        if value is not None and value not in PROJECT_STATUSES:
+            raise ValueError(
+                f"Status must be one of: {', '.join(sorted(PROJECT_STATUSES))}"
+            )
+        return value
+
+
+class ProjectUpdate(BaseModel):
+    """What a project edit request means to change; omitted keys preserve
+    the Notion value, an explicit null clears where clearing is meaningful
+    (goal, deadline). Status is written only when set — changing status
+    never cascades to the project's tasks. An explicit null status is
+    rejected — resetting to Planned is a deliberate edit, not the meaning
+    of an ambiguous null. previous_goal_id carries the goal link the editor
+    saw, so the goal-side sync repairs idempotently on retry."""
+
+    name: str | None = None
+    status: str | None = None
+    goal_id: str | None = None
+    previous_goal_id: str | None = None
+    deadline: date | None = None
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("Project name must not be blank")
+        return value.strip() if value is not None else None
+
+    @field_validator("status")
+    @classmethod
+    def status_in_schema(cls, value: str | None) -> str | None:
+        if value is not None and value not in PROJECT_STATUSES:
+            raise ValueError(
+                f"Status must be one of: {', '.join(sorted(PROJECT_STATUSES))}"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def reject_clearing_nonclearable_fields(self) -> "ProjectUpdate":
+        if "name" in self.model_fields_set and self.name is None:
+            raise ValueError("Project name cannot be cleared")
+        if "status" in self.model_fields_set and self.status is None:
+            raise ValueError(
+                "Project status cannot be cleared; send a status instead"
+            )
+        return self
+
+    def to_domain(self) -> DomainProjectUpdate:
+        return DomainProjectUpdate(
+            name=self.name if "name" in self.model_fields_set else UNSET,
+            status=self.status if "status" in self.model_fields_set else UNSET,
+            goal_id=self.goal_id if "goal_id" in self.model_fields_set else UNSET,
+            previous_goal_id=(
+                self.previous_goal_id
+                if "previous_goal_id" in self.model_fields_set
+                else UNSET
+            ),
+            deadline=(
+                self.deadline if "deadline" in self.model_fields_set else UNSET
             ),
         )
 
@@ -323,6 +414,8 @@ def create_app(
     fetch_active_goals: Callable[[], list] | None = None,
     create_goal: Callable[[GoalCreate], dict] | None = None,
     update_goal: Callable[[str, DomainGoalUpdate], bool] | None = None,
+    create_project: Callable[[ProjectCreate], dict] | None = None,
+    update_project: Callable[[str, DomainProjectUpdate], bool] | None = None,
     reviews: WeeklyReviewRepository | None = None,
 ) -> FastAPI:
 
@@ -532,23 +625,29 @@ def create_app(
             ) from error
         return {"task": task_id, "updated": True}
 
-    if fetch_project_detail is not None:
-
-        @app.get("/projects/{project_id}")
-        def project_endpoint(project_id: str) -> DomainProjectDetail:
-            try:
-                return fetch_project_detail(project_id)
-            except ProjectNotFound as error:
-                raise HTTPException(
-                    status_code=404, detail="This project could not be found."
-                ) from error
-            except Exception as error:
-                # The service degrades per source; a raised error here means
-                # the whole read failed unexpectedly.
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"The project could not be read: {error}",
-                ) from error
+    # The project read always registers so the path exists alongside the
+    # unconditional PATCH /projects/{id} write route (a GET against a
+    # path holding only a PATCH would 405 instead of answering).
+    @app.get("/projects/{project_id}")
+    def project_endpoint(project_id: str) -> DomainProjectDetail:
+        if fetch_project_detail is None:
+            raise HTTPException(
+                status_code=501,
+                detail="The project detail is not configured on this service.",
+            )
+        try:
+            return fetch_project_detail(project_id)
+        except ProjectNotFound as error:
+            raise HTTPException(
+                status_code=404, detail="This project could not be found."
+            ) from error
+        except Exception as error:
+            # The service degrades per source; a raised error here means
+            # the whole read failed unexpectedly.
+            raise HTTPException(
+                status_code=502,
+                detail=f"The project could not be read: {error}",
+            ) from error
 
     # /goals/active registers before /goals/{goal_id}: Starlette matches in
     # registration order, so the path param would otherwise swallow the
@@ -637,5 +736,70 @@ def create_app(
                     status_code=502, detail="Notion could not be reached. Try again."
                 ) from error
             return {"goal": goal_id, "updated": True}
+
+    # Project writes always register: an unconfigured data source answers
+    # 501 so the UI sees "not configured" rather than a 404 route miss
+    # (the detail read can work without the var, so the write contract
+    # must not silently differ).
+    @app.post("/projects", status_code=201)
+    def create_project_endpoint(request: CreateProjectRequest) -> dict:
+        if create_project is None:
+            raise HTTPException(
+                status_code=501,
+                detail="Project creation is not configured on this service.",
+            )
+        try:
+            return create_project(
+                ProjectCreate(
+                    name=request.name,
+                    status=request.status,
+                    goal_id=request.goal_id,
+                    deadline=request.deadline,
+                )
+            )
+        except HTTPError as error:
+            raise _notion_write_error(error, "create", entity="project") from error
+        except GoalLinkError as error:
+            # The project page was created; only the goal-side link failed.
+            # Report the id so the UI opens the project instead of inviting
+            # a duplicate re-create.
+            return {
+                "id": error.project_id,
+                "created": True,
+                "goal_link_error": error.detail,
+            }
+        except RequestException as error:
+            raise HTTPException(
+                status_code=502, detail="Notion could not be reached. Try again."
+            ) from error
+
+    @app.patch("/projects/{project_id}")
+    def update_project_endpoint(project_id: str, update: ProjectUpdate) -> dict:
+        if update_project is None:
+            raise HTTPException(
+                status_code=501,
+                detail="Project edits are not configured on this service.",
+            )
+        domain_update = update.to_domain()
+        if domain_update == DomainProjectUpdate():
+            raise HTTPException(status_code=422, detail="No project fields to update")
+        try:
+            update_project(project_id, domain_update)
+        except HTTPError as error:
+            raise _notion_write_error(error, "update", entity="project") from error
+        except GoalLinkError as error:
+            # The project page was updated; the goal-side repair failed and
+            # can be retried (the sync repairs idempotently against
+            # previous_goal_id).
+            return {
+                "project": project_id,
+                "updated": True,
+                "goal_link_error": error.detail,
+            }
+        except RequestException as error:
+            raise HTTPException(
+                status_code=502, detail="Notion could not be reached. Try again."
+            ) from error
+        return {"project": project_id, "updated": True}
 
     return app
