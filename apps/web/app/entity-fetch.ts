@@ -46,7 +46,17 @@ export async function fetchEntityDetail<T>(path: string): Promise<EntityFetchRes
         error: { kind: "unavailable", message: "The page could not be loaded. Please try again." },
       };
     }
-    return { ok: true, data: (await response.json()) as T };
+    const data = (await response.json()) as T;
+    // An entity detail is a single object; an array response means the
+    // path hit a list endpoint (e.g. /goals/active matching /goals/[id]),
+    // which is not a detail page.
+    if (Array.isArray(data)) {
+      return {
+        ok: false,
+        error: { kind: "not_found", message: "This page could not be found." },
+      };
+    }
+    return { ok: true, data };
   } catch {
     return {
       ok: false,
