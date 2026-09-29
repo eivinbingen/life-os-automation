@@ -5,13 +5,22 @@ import userEvent from "@testing-library/user-event";
 import { ProjectDetailBoard } from "./project-detail";
 import type { ProjectDetail } from "../../projects-actions";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
 vi.mock("../../actions", () => ({
   updateTaskDone: vi.fn(),
 }));
+vi.mock("../../projects-actions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../projects-actions")>();
+  return { ...actual, updateProject: vi.fn() };
+});
 
 import { updateTaskDone } from "../../actions";
+import { updateProject } from "../../projects-actions";
 
 const updateTaskDoneMock = vi.mocked(updateTaskDone);
+const updateProjectMock = vi.mocked(updateProject);
 
 function project(overrides: Partial<ProjectDetail> = {}): ProjectDetail {
   return {
@@ -130,5 +139,45 @@ describe("Project detail view", () => {
 
     expect(checkbox.checked).toBe(false);
     expect(checkbox.className).toContain("task-checkbox-error");
+  });
+
+  it("saves only the changed fields on edit and refreshes", async () => {
+    const user = userEvent.setup();
+    updateProjectMock.mockResolvedValue({ ok: true });
+    render(<ProjectDetailBoard project={project()} />);
+
+    await user.click(screen.getByRole("button", { name: "Edit project" }));
+
+    const nameInput = screen.getByLabelText("Name") as HTMLInputElement;
+    await user.clear(nameInput);
+    await user.type(nameInput, "Renamed project");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(updateProjectMock).toHaveBeenCalledWith("project-1", { name: "Renamed project" });
+  });
+
+  it("closes the edit form without a write when nothing changed", async () => {
+    const user = userEvent.setup();
+    render(<ProjectDetailBoard project={project()} />);
+
+    await user.click(screen.getByRole("button", { name: "Edit project" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(updateProjectMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the form open and shows the error when the save fails", async () => {
+    const user = userEvent.setup();
+    updateProjectMock.mockResolvedValue({ ok: false, error: "Notion rejected the project properties." });
+    render(<ProjectDetailBoard project={project()} />);
+
+    await user.click(screen.getByRole("button", { name: "Edit project" }));
+    const nameInput = screen.getByLabelText("Name") as HTMLInputElement;
+    await user.clear(nameInput);
+    await user.type(nameInput, "Renamed project");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(screen.getByText("Notion rejected the project properties.")).toBeTruthy();
+    expect(screen.getByLabelText("Name")).toBeTruthy();
   });
 });

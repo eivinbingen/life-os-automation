@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 import { completeGoal, updateGoal } from "../../goal-actions";
 import { GoalForm } from "../../goal-form";
+import { createProject } from "../../projects-actions";
+import { ProjectForm } from "../../project-form";
 import { formatStripDate } from "../../date-utils";
 import type { GoalDetail } from "../../goals-actions";
 import { TaskProjectLink } from "../../task-project-link";
@@ -26,6 +28,40 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
   const [completeError, setCompleteError] = useState<string | null>(null);
   // Guards against a duplicate completion write before state updates land.
   const completeInFlight = useRef(false);
+  const [addProjectOpen, setAddProjectOpen] = useState(false);
+  const [addProjectPending, setAddProjectPending] = useState(false);
+  const [addProjectError, setAddProjectError] = useState<string | null>(null);
+  const addProjectInFlight = useRef(false);
+
+  async function saveNewProject(
+    values: { name: string; status: string; goal_id: string | null; deadline: string | null },
+  ) {
+    if (addProjectInFlight.current) return;
+    addProjectInFlight.current = true;
+    setAddProjectPending(true);
+    setAddProjectError(null);
+    try {
+      const edits: {
+        name: string;
+        status: string;
+        goal_id?: string | null;
+        deadline?: string | null;
+      } = { name: values.name, status: values.status };
+      if (values.deadline) edits.deadline = values.deadline;
+      const result = await createProject(edits);
+      if (result.ok) {
+        setAddProjectOpen(false);
+        router.push(`/projects/${result.projectId}`);
+      } else {
+        setAddProjectError(result.error);
+      }
+    } catch {
+      setAddProjectError("The project could not be created. Try again.");
+    } finally {
+      addProjectInFlight.current = false;
+      setAddProjectPending(false);
+    }
+  }
 
   async function saveEdit(
     _values: { name: string; status: string; target_date: string | null },
@@ -210,6 +246,23 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
             ))}
           </ul>
         )}
+        {goal.status !== "Done" && (
+          <div className="review-section-controls">
+            <button
+              type="button"
+              className="review-queue-complete"
+              onClick={() => setAddProjectOpen(true)}
+              disabled={addProjectPending}
+            >
+              Add project
+            </button>
+          </div>
+        )}
+        {addProjectError && (
+          <p className="review-action-error" role="alert">
+            {addProjectError}
+          </p>
+        )}
       </section>
 
       {editOpen && (
@@ -225,6 +278,22 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
           error={editError}
           onSave={(values, changed) => void saveEdit(values, changed)}
           onClose={() => setEditOpen(false)}
+        />
+      )}
+
+      {addProjectOpen && (
+        <ProjectForm
+          heading="Add project"
+          kicker="ADD PROJECT"
+          initial={undefined}
+          lockedGoal={{ id: goal.id, name: goal.name }}
+          pending={addProjectPending}
+          error={addProjectError}
+          onSave={(values) => void saveNewProject(values)}
+          onClose={() => {
+            setAddProjectOpen(false);
+            setAddProjectError(null);
+          }}
         />
       )}
 

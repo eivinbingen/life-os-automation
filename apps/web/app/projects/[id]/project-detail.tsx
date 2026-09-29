@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { formatItemDate, formatStripDate } from "../../date-utils";
 import {
@@ -9,6 +10,8 @@ import {
   TaskCompletionProvider,
 } from "../../task-completion";
 import { TaskCheckbox } from "../../task-checkbox";
+import { updateProject } from "../../projects-actions";
+import { ProjectForm } from "../../project-form";
 import type { ProjectDetail } from "../../projects-actions";
 
 export function ProjectDetailBoard({ project }: { project: ProjectDetail }) {
@@ -20,6 +23,40 @@ export function ProjectDetailBoard({ project }: { project: ProjectDetail }) {
       ),
     [project.tasks],
   );
+
+  const router = useRouter();
+  const [editOpen, setEditOpen] = useState(false);
+  const [editPending, setEditPending] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  async function saveEdit(
+    _values: { name: string; status: string; goal_id: string | null; deadline: string | null },
+    changed: { name?: string; status?: string; goal_id?: string | null; deadline?: string | null },
+  ) {
+    if (editPending) return;
+    if (Object.keys(changed).length === 0) {
+      // Saving without any change is a no-op, not an error: close without
+      // an external write.
+      setEditOpen(false);
+      return;
+    }
+    setEditPending(true);
+    setEditError(null);
+    try {
+      const result = await updateProject(project.id, changed);
+      if (result.ok) {
+        setEditOpen(false);
+        router.refresh();
+      } else {
+        // Failed save: keep the entered edits for retry, show the error.
+        setEditError(result.error);
+      }
+    } catch {
+      setEditError("The project could not be saved. Try again.");
+    } finally {
+      setEditPending(false);
+    }
+  }
 
   return (
     <TaskCompletionProvider tasks={project.tasks}>
@@ -33,6 +70,16 @@ export function ProjectDetailBoard({ project }: { project: ProjectDetail }) {
             <p className="intro-copy">
               The project&apos;s verified context and open tasks from Notion.
             </p>
+          </div>
+          <div className="review-section-controls">
+            <button
+              type="button"
+              className="review-advance"
+              onClick={() => setEditOpen(true)}
+              disabled={editPending}
+            >
+              Edit project
+            </button>
           </div>
         </section>
 
@@ -122,9 +169,26 @@ export function ProjectDetailBoard({ project }: { project: ProjectDetail }) {
           )}
         </section>
 
+        {editOpen && (
+          <ProjectForm
+            heading="Edit project"
+            kicker="EDIT PROJECT"
+            initial={{
+              name: project.name ?? "",
+              status: project.status ?? "Planned",
+              goal_id: project.goal_id,
+              deadline: project.deadline,
+            }}
+            pending={editPending}
+            error={editError}
+            onSave={(values, changed) => void saveEdit(values, changed)}
+            onClose={() => setEditOpen(false)}
+          />
+        )}
+
         <footer className="dashboard-footer">
           <span>Life OS <span className="footer-separator">/</span> Project</span>
-          <span className="footer-status"><span className="footer-status-dot" />Read-only workspace</span>
+          <span className="footer-status"><span className="footer-status-dot" />Project workspace</span>
         </footer>
       </div>
     </TaskCompletionProvider>
