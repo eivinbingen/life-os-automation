@@ -468,7 +468,7 @@ function DirectionBody({
                       )}
                       <button
                         type="button"
-                        className="review-queue-backlog"
+                        className="entity-action-button"
                         disabled={pendingIds.has(goal.id)}
                         onClick={() => setAddProjectId(goal.id)}
                       >
@@ -513,7 +513,7 @@ function DirectionBody({
           </p>
           <button
             type="button"
-            className="review-queue-backlog"
+            className="entity-action-button"
             disabled={addGoalPending}
             onClick={() => setAddGoalOpen(true)}
           >
