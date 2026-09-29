@@ -10,20 +10,20 @@ const GOAL_STATUSES = ["Not Started", "Active", "Failed", "Done"] as const;
 export type GoalFormValues = {
   name: string;
   status: string;
-  area_id: string | null;
   target_date: string | null;
 };
 
 /**
- * Shared Add Goal / Edit Goal dialog. Fields mirror the verified editable
- * set from the inspected schema: name, status, area, target date. Only
+ * Shared Add Goal / Edit Goal dialog. Fields mirror the editable set the
+ * UI can support today: name, status, target date. Area is directly
+ * writable in the schema but the app has no areas listing yet, so no area
+ * control renders here; area editing returns with the areas slice. Only
  * fields the user deliberately changes are sent on save.
  */
 export function GoalForm({
   heading,
   kicker,
   initial,
-  areas,
   pending,
   error,
   onSave,
@@ -32,7 +32,6 @@ export function GoalForm({
   heading: string;
   kicker: string;
   initial?: Partial<GoalFormValues>;
-  areas?: { id: string; name: string }[];
   pending: boolean;
   error: string | null;
   onSave: (values: GoalFormValues, changed: Partial<GoalFormValues>) => void;
@@ -45,12 +44,10 @@ export function GoalForm({
   const seed = initial ?? {};
   const initialName = seed.name ?? "";
   const initialStatus = seed.status ?? "Not Started";
-  const initialArea = seed.area_id ?? "";
   const initialTarget = seed.target_date?.slice(0, 10) ?? "";
 
   const [name, setName] = useState(initialName);
   const [status, setStatus] = useState(initialStatus);
-  const [areaId, setAreaId] = useState(initialArea);
   const [targetDate, setTargetDate] = useState(initialTarget);
 
   useEffect(() => {
@@ -76,14 +73,12 @@ export function GoalForm({
     const values: GoalFormValues = {
       name: name.trim(),
       status,
-      area_id: areaId || null,
       target_date: targetDate || null,
     };
     // Only fields that actually differ from the seeded values are sent.
     const changed: Partial<GoalFormValues> = {};
     if (values.name !== initialName) changed.name = values.name;
     if (values.status !== initialStatus) changed.status = values.status;
-    if (values.area_id !== (initialArea || null)) changed.area_id = values.area_id;
     if (values.target_date !== (initialTarget || null)) {
       changed.target_date = values.target_date;
     }
@@ -153,26 +148,6 @@ export function GoalForm({
               ))}
             </select>
           </div>
-
-          {areas && areas.length > 0 && (
-            <div className="capture-field">
-              <label htmlFor={`${formId}-area`}>Area (optional)</label>
-              <select
-                id={`${formId}-area`}
-                className="capture-name task-edit-name"
-                value={areaId}
-                disabled={pending}
-                onChange={(event) => setAreaId(event.target.value)}
-              >
-                <option value="">No area</option>
-                {areas.map((area) => (
-                  <option key={area.id} value={area.id}>
-                    {area.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
 
           <div className="capture-field">
             <label htmlFor={`${formId}-target`}>Target date (optional)</label>

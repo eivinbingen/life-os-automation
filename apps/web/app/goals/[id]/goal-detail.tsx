@@ -28,10 +28,16 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
   const completeInFlight = useRef(false);
 
   async function saveEdit(
-    _values: { name: string; status: string; area_id: string | null; target_date: string | null },
-    changed: { name?: string; status?: string; area_id?: string | null; target_date?: string | null },
+    _values: { name: string; status: string; target_date: string | null },
+    changed: { name?: string; status?: string; target_date?: string | null },
   ) {
     if (editPending) return;
+    if (Object.keys(changed).length === 0) {
+      // Saving without any change is a no-op, not an error: close without
+      // an external write.
+      setEditOpen(false);
+      return;
+    }
     setEditPending(true);
     setEditError(null);
     try {
@@ -213,7 +219,6 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
           initial={{
             name: goal.name ?? "",
             status: goal.status ?? "Not Started",
-            area_id: goal.area_id,
             target_date: goal.target_date,
           }}
           pending={editPending}

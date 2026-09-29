@@ -120,7 +120,7 @@ describe("Goal detail view", () => {
     expect(completeGoalMock).not.toHaveBeenCalled();
   });
 
-  it("opens the edit form prefilled and saves only changed fields", async () => {
+  it("opens the edit form prefilled and closes cleanly on a no-op save", async () => {
     const user = userEvent.setup();
     updateGoalMock.mockResolvedValue({ ok: true });
     render(<GoalDetailBoard goal={goal()} />);
@@ -135,8 +135,9 @@ describe("Goal detail view", () => {
 
     await user.click(screen.getByRole("button", { name: "Save" }));
 
-    // Nothing changed: no fields are sent.
-    expect(updateGoalMock).toHaveBeenCalledWith("goal-1", {});
+    // Saving with no change is a no-op: no external write, dialog closes.
+    expect(updateGoalMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   });
 
   it("sends a renamed goal as a name-only edit", async () => {

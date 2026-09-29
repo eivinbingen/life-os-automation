@@ -130,10 +130,9 @@ def update_goal(token: str, goal_id: str, update: GoalUpdate) -> bool:
         # A set name is never None: the API layer rejects null names.
         properties["Name"] = {"title": [{"text": {"content": update.name}}]}
     if update.status is not UNSET:
-        if update.status is None:
-            properties["Status"] = {"status": {"name": "Not Started"}}
-        else:
-            properties["Status"] = {"status": {"name": update.status}}
+        # A set status is never None: the API layer rejects an explicit
+        # null status, so resetting to Not Started must be sent as a value.
+        properties["Status"] = {"status": {"name": update.status}}
     if update.area_id is not UNSET:
         if update.area_id is None:
             properties["Area"] = {"relation": []}

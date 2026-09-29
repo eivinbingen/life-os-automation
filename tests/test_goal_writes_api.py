@@ -179,6 +179,22 @@ def test_update_goal_rejects_status_outside_schema():
     assert response.status_code == 422
 
 
+def test_update_goal_rejects_null_status():
+    """An explicit null status is rejected instead of silently resetting a
+    Done/Failed goal to Not Started; resetting is a deliberate value."""
+
+    fetch_events, fetch_tasks, update = _minimal_fetchers()
+
+    client = TestClient(
+        create_app(fetch_events, fetch_tasks, update, update_goal=lambda g, u: True)
+    )
+
+    response = client.patch("/goals/goal-1", json={"status": None})
+
+    assert response.status_code == 422
+    assert "cannot be cleared" in str(response.json()["detail"])
+
+
 def test_update_goal_route_absent_without_callable():
     fetch_events, fetch_tasks, update = _minimal_fetchers()
 

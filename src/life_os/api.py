@@ -22,7 +22,9 @@ from life_os.models.finance import (
 from life_os.models.goal import (
     GoalCreate,
 )
-from life_os.models.goal import GoalDetail as DomainGoalDetail
+from life_os.models.goal import (
+    GoalDetail as DomainGoalDetail,
+)
 from life_os.models.goal import (
     GoalUpdate as DomainGoalUpdate,
 )
@@ -135,10 +137,12 @@ class CreateGoalRequest(BaseModel):
         return value
 
 
-class GoalUpdateModel(BaseModel):
+class GoalUpdate(BaseModel):
     """What a goal edit request means to change; omitted keys preserve the
     Notion value, an explicit null clears where clearing is meaningful.
-    Status is status-only and never cascades to projects or tasks."""
+    Status is status-only and never cascades to projects or tasks. An
+    explicit null status is rejected — resetting to Not Started is a
+    deliberate edit, not the meaning of an ambiguous null."""
 
     name: str | None = None
     status: str | None = None
@@ -162,9 +166,11 @@ class GoalUpdateModel(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def reject_clearing_nonclearable_fields(self) -> "GoalUpdateModel":
+    def reject_clearing_nonclearable_fields(self) -> "GoalUpdate":
         if "name" in self.model_fields_set and self.name is None:
             raise ValueError("Goal name cannot be cleared")
+        if "status" in self.model_fields_set and self.status is None:
+            raise ValueError("Goal status cannot be cleared; send a status instead")
         return self
 
     def to_domain(self) -> DomainGoalUpdate:
@@ -618,7 +624,7 @@ def create_app(
     if update_goal is not None:
 
         @app.patch("/goals/{goal_id}")
-        def update_goal_endpoint(goal_id: str, update: GoalUpdateModel) -> dict:
+        def update_goal_endpoint(goal_id: str, update: GoalUpdate) -> dict:
             domain_update = update.to_domain()
             if domain_update == DomainGoalUpdate():
                 raise HTTPException(status_code=422, detail="No goal fields to update")

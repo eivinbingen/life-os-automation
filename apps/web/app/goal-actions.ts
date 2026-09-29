@@ -1,7 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-
 /** The finite status options from the inspected Goals schema. UI-only:
  * the backend validates the same set. Lives in goal-form.tsx because a
  * "use server" module may only export async functions. */
@@ -71,7 +69,6 @@ export async function createGoal(
     if (!created.id) {
       return { ok: false, error: "The goal was created but no identifier came back." };
     }
-    revalidatePath("/");
     return { ok: true, goalId: created.id };
   } catch {
     return { ok: false, error: "The Life OS service could not be reached" };
@@ -104,7 +101,6 @@ export async function updateGoal(
     if (!response.ok) {
       return { ok: false, error: await errorFrom(response, "Could not save the goal") };
     }
-    revalidatePath("/");
     return { ok: true };
   } catch {
     return { ok: false, error: "The Life OS service could not be reached" };
