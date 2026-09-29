@@ -412,7 +412,16 @@ function DirectionBody({
           {summary.items.map((goal) => (
             <li key={goal.id} className="review-queue-row">
               <div className="review-queue-main">
-                <span className="review-queue-name">{goal.name || "Untitled goal"}</span>
+                <span className="review-queue-name">
+                  <a
+                    className="review-queue-name"
+                    href={`/goals/${goal.id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {goal.name || "Untitled goal"}
+                  </a>
+                </span>
                 {goal.projects.length > 0 && (
                   <span className="review-queue-project">
                     <span>Projects</span>

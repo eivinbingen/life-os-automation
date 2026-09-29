@@ -74,6 +74,39 @@ def fetch_active_goal_pages(
     return list(pages.values())
 
 
+def fetch_goals_for_project(
+    token: str, data_source_id: str, project_id: str, page_size: int
+) -> list[Task]:
+    """Fetch goals whose goal-side `Projects` relation contains project_id.
+
+    A narrow read for the project detail view: pre-existing projects linked
+    from the goal side (the side the app writes and reads) have an empty
+    project-side `Goal` relation, so the goal is only discoverable here.
+    Bounded by page_size pagination.
+    """
+
+    goals: dict[str, Task] = {}
+    body = {
+        "filter": {"property": "Projects", "relation": {"contains": project_id}},
+        "page_size": page_size,
+    }
+    while True:
+        res = requests.post(
+            url=f"{NOTION_API_URL}/data_sources/{data_source_id}/query",
+            headers=_headers(token),
+            json=body,
+        )
+        res.raise_for_status()
+        data = res.json()
+        for page in data["results"]:
+            goal = Task(id=page["id"], name=_page_title(page) or "")
+            goals.setdefault(goal.id, goal)
+        if not data["has_more"]:
+            break
+        body["start_cursor"] = data["next_cursor"]
+    return list(goals.values())
+
+
 def fetch_goal(token: str, goal_id: str) -> dict:
     """Fetch one goal page raw (name, status, relations) for the service
     layer to normalize. Read-only; raises on failure."""

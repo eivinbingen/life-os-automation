@@ -49,6 +49,7 @@ def get_project_detail(
     fetch_project: Callable[[str], dict],
     fetch_tasks_for_project: Callable[[str], TaskFetchResult],
     fetch_goal_name: Callable[[str], str | None],
+    fetch_goals_for_project: Callable[[str], list[Task]] | None = None,
 ) -> ProjectDetail:
     """Assemble one project detail, degrading per source.
 
@@ -57,6 +58,10 @@ def get_project_detail(
     the tasks list as empty with a warning. A genuinely missing project
     (Notion 404) is not a degraded read — it raises ProjectNotFound so
     the API can answer 404 instead of an empty shell.
+
+    The goal link prefers the project-side `Goal` relation (navigation-ready);
+    when it is empty, the goal-side `Projects` query finds goals that link
+    this project from their side (the relation sides do not auto-sync).
     """
 
     statuses: list[dict] = []
@@ -80,6 +85,15 @@ def get_project_detail(
         name, status, status_available, goal_id, resolved_goal, deadline = (
             _normalize_project(page)
         )
+
+    if goal_id is None and fetch_goals_for_project is not None:
+        try:
+            linked = fetch_goals_for_project(project_id)
+            if linked:
+                goal_id = linked[0].id
+        except Exception as error:
+            # A failed goal-side lookup is degraded context, not a dropped project.
+            statuses.append({"name": "Notion goals", "ok": False, "error": str(error)})
 
     goal_name = None
     if goal_id:

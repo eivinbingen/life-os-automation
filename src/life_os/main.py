@@ -19,6 +19,7 @@ from life_os.integrations.notion_goals import (
     fetch_active_goal_pages,
     fetch_active_goals,
     fetch_goal,
+    fetch_goals_for_project,
     fetch_projects_by_ids,
     update_goal,
 )
@@ -92,9 +93,16 @@ def main():
             page_size=100,
         )
 
+    goals_data_source_id = os.getenv("NOTION_GOALS_DATA_SOURCE_ID")
+    # One shared check gates both goal reads and writes: a blank value
+    # must not wire a query or a create parent against an empty id.
+    goals_configured = bool(goals_data_source_id)
+
     # The project detail read needs only the token and the tasks data
     # source (project page + tasks-by-project query), so it is enabled
-    # whenever Today works; the optional projects env var is unused.
+    # whenever Today works; the optional projects env var is unused. The
+    # goal-side lookup needs the goals data source and degrades when it is
+    # not configured.
     def fetch_project_detail(project_id: str):
         return _get_project_detail(
             project_id,
@@ -103,12 +111,12 @@ def main():
                 fetch_tasks_for_project, token, data_source_id, page_size=100
             ),
             fetch_goal_name=partial(_fetch_project_name, token),
+            fetch_goals_for_project=(
+                partial(fetch_goals_for_project, token, goals_data_source_id, page_size=100)
+                if goals_configured
+                else None
+            ),
         )
-
-    goals_data_source_id = os.getenv("NOTION_GOALS_DATA_SOURCE_ID")
-    # One shared check gates both goal reads and writes: a blank value
-    # must not wire a query or a create parent against an empty id.
-    goals_configured = bool(goals_data_source_id)
 
     projects_data_source_id = os.getenv("NOTION_PROJECTS_DATA_SOURCE_ID")
     # The write callables are gated on the data source id: a blank value
