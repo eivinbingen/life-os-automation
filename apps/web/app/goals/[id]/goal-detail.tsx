@@ -126,6 +126,16 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
           </p>
         </div>
         <div className="review-section-controls">
+          {goal.status !== "Done" && !confirmingComplete && (
+            <button
+              type="button"
+              className="entity-action-button review-queue-complete"
+              onClick={() => setConfirmingComplete(true)}
+              disabled={completePending}
+            >
+              Complete goal
+            </button>
+          )}
           <button
             type="button"
             className="entity-action-button"
@@ -204,18 +214,7 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
             Cancel
           </button>
         </div>
-      ) : (
-        <div className="review-section-controls">
-          <button
-            type="button"
-            className="entity-action-button review-queue-complete"
-            onClick={() => setConfirmingComplete(true)}
-            disabled={completePending}
-          >
-            Complete goal
-          </button>
-        </div>
-      )}
+      ) : null}
       {completeError && (
         <p className="review-action-error" role="alert">
           {completeError}
@@ -228,7 +227,19 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
             <span className="section-kicker">NOTION</span>
             <h2 id="goal-projects-heading">Related projects</h2>
           </div>
-          <span className="count-badge">{goal.projects.length}</span>
+          <div className="review-section-controls">
+            {goal.status !== "Done" && (
+              <button
+                type="button"
+                className="entity-action-button review-queue-complete"
+                onClick={() => setAddProjectOpen(true)}
+                disabled={addProjectPending}
+              >
+                Add project
+              </button>
+            )}
+            <span className="count-badge">{goal.projects.length}</span>
+          </div>
         </div>
         {goal.projects.length === 0 ? (
           <p className="review-empty-note">No projects linked to this goal yet.</p>
@@ -245,18 +256,6 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
               </li>
             ))}
           </ul>
-        )}
-        {goal.status !== "Done" && (
-          <div className="review-section-controls">
-            <button
-              type="button"
-              className="entity-action-button review-queue-complete"
-              onClick={() => setAddProjectOpen(true)}
-              disabled={addProjectPending}
-            >
-              Add project
-            </button>
-          </div>
         )}
         {addProjectError && (
           <p className="review-action-error" role="alert">
