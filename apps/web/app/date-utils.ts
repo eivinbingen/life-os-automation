@@ -99,3 +99,17 @@ export function formatItemDate(value: string | null) {
   // Notion's date-time value contains the wall-clock time entered for the task.
   return value.includes("T") ? `${formatted} · ${value.slice(11, 16)}` : formatted;
 }
+
+/** Compact horizontal date for overview strips, e.g. "19 Oct 2026" — the
+ * long weekday format wraps badly in a constrained strip. */
+export function formatStripDate(value: string | null) {
+  if (!value) return null;
+  const datePart = value.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null;
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${datePart}T12:00:00Z`));
+}
