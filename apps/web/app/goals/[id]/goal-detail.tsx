@@ -128,7 +128,7 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
         <div className="review-section-controls">
           <button
             type="button"
-            className="review-advance"
+            className="entity-action-button"
             onClick={() => setEditOpen(true)}
             disabled={editPending}
           >
@@ -208,7 +208,7 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
         <div className="review-section-controls">
           <button
             type="button"
-            className="review-queue-complete"
+            className="entity-action-button review-queue-complete"
             onClick={() => setConfirmingComplete(true)}
             disabled={completePending}
           >
@@ -250,7 +250,7 @@ export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
           <div className="review-section-controls">
             <button
               type="button"
-              className="review-queue-complete"
+              className="entity-action-button review-queue-complete"
               onClick={() => setAddProjectOpen(true)}
               disabled={addProjectPending}
             >

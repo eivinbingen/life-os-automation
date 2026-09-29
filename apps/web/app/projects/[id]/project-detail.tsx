@@ -12,9 +12,16 @@ import {
 import { TaskCheckbox } from "../../task-checkbox";
 import { updateProject } from "../../projects-actions";
 import { ProjectForm } from "../../project-form";
+import type { GoalOption } from "../../project-form";
 import type { ProjectDetail } from "../../projects-actions";
 
-export function ProjectDetailBoard({ project }: { project: ProjectDetail }) {
+export function ProjectDetailBoard({
+  project,
+  goalOptions,
+}: {
+  project: ProjectDetail;
+  goalOptions: GoalOption[];
+}) {
   const failed = project.statuses.filter((status) => !status.ok);
   const sorted = useMemo(
     () =>
@@ -74,7 +81,7 @@ export function ProjectDetailBoard({ project }: { project: ProjectDetail }) {
           <div className="review-section-controls">
             <button
               type="button"
-              className="review-advance"
+              className="entity-action-button"
               onClick={() => setEditOpen(true)}
               disabled={editPending}
             >
@@ -179,6 +186,7 @@ export function ProjectDetailBoard({ project }: { project: ProjectDetail }) {
               goal_id: project.goal_id,
               deadline: project.deadline,
             }}
+            goalOptions={goalOptions}
             pending={editPending}
             error={editError}
             onSave={(values, changed) => void saveEdit(values, changed)}
