@@ -477,7 +477,7 @@ def create_app(
 
         @app.get("/reviews/weekly/direction")
         def direction_endpoint(week_start: date) -> DomainDirectionSummary:
-            if fetch_active_goal_pages is None:
+            if fetch_active_goal_pages is None or resolve_projects is None:
                 raise HTTPException(
                     status_code=501,
                     detail="The direction summary is not configured on this service.",

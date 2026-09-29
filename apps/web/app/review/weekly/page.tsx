@@ -52,17 +52,18 @@ export default async function WeeklyReviewPage({
   const historyError = historyResult.ok ? null : historyResult.error;
 
   // A completed record renders its fixed saved summary from the record
-  // itself, so live look-back data is only needed for drafts.
+  // itself, so live look-back data is only needed for drafts. The three
+  // reads share no data; they render in the slowest single fetch's time,
+  // not the sum.
   let lookBack: { ok: true; summary: LookBackSummary } | { ok: false; error: string } | null = null;
   let cleanUp: { ok: true; summary: CleanUpSummary } | { ok: false; error: string } | null = null;
   let direction: { ok: true; summary: DirectionSummary } | { ok: false; error: string } | null = null;
   if (review.status !== "completed") {
-    const lookBackResult = await fetchLookBack(weekStart);
-    lookBack = lookBackResult;
-    const cleanUpResult = await fetchCleanUp(weekStart);
-    cleanUp = cleanUpResult;
-    const directionResult = await fetchDirection(weekStart);
-    direction = directionResult;
+    [lookBack, cleanUp, direction] = await Promise.all([
+      fetchLookBack(weekStart),
+      fetchCleanUp(weekStart),
+      fetchDirection(weekStart),
+    ]);
   }
 
   // Keyed by record id: navigating to another week re-renders this server

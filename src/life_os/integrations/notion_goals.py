@@ -14,50 +14,13 @@ from life_os.models.goal import GoalCreate, GoalUpdate, ProjectRef
 from life_os.models.notion import UNSET, Task
 
 
-def fetch_active_goals(token: str, data_source_id: str, page_size: int) -> list[Task]:
-    """Fetch goals with the Notion-defined Active status (read-only).
-
-    Returns lightweight Task-shaped entries (id + name) for the Review
-    Direction stage. Bounded by page_size pagination.
-    """
-
-    goals: dict[str, Task] = {}
-    body = {
-        "filter": {"property": "Status", "status": {"equals": "Active"}},
-        "page_size": page_size,
-    }
-    while True:
-        res = requests.post(
-            url=f"{NOTION_API_URL}/data_sources/{data_source_id}/query",
-            headers=_headers(token),
-            json=body,
-        )
-        res.raise_for_status()
-        data = res.json()
-        for page in data["results"]:
-            goal = Task(id=page["id"], name=_page_title(page) or "")
-            goals.setdefault(goal.id, goal)
-        if not data["has_more"]:
-            break
-        body["start_cursor"] = data["next_cursor"]
-    return list(goals.values())
-
-
-def fetch_active_goal_pages(
-    token: str, data_source_id: str, page_size: int
+def _query_all_pages(
+    token: str, data_source_id: str, filter: dict, page_size: int
 ) -> list[dict]:
-    """Fetch raw goal pages with the Notion-defined Active status.
-
-    A narrow read for the Review Direction stage (#30): the service
-    normalizes each page (name, status, project relation ids). Bounded by
-    page_size pagination.
-    """
+    """Run a paginated data-source query and return the deduplicated pages."""
 
     pages: dict[str, dict] = {}
-    body = {
-        "filter": {"property": "Status", "status": {"equals": "Active"}},
-        "page_size": page_size,
-    }
+    body = {"filter": filter, "page_size": page_size}
     while True:
         res = requests.post(
             url=f"{NOTION_API_URL}/data_sources/{data_source_id}/query",
@@ -72,6 +35,35 @@ def fetch_active_goal_pages(
             break
         body["start_cursor"] = data["next_cursor"]
     return list(pages.values())
+
+
+ACTIVE_GOAL_FILTER = {"property": "Status", "status": {"equals": "Active"}}
+
+
+def fetch_active_goals(token: str, data_source_id: str, page_size: int) -> list[Task]:
+    """Fetch goals with the Notion-defined Active status (read-only).
+
+    Returns lightweight Task-shaped entries (id + name) for the Review
+    Direction stage. Bounded by page_size pagination.
+    """
+
+    return [
+        Task(id=page["id"], name=_page_title(page) or "")
+        for page in _query_all_pages(token, data_source_id, ACTIVE_GOAL_FILTER, page_size)
+    ]
+
+
+def fetch_active_goal_pages(
+    token: str, data_source_id: str, page_size: int
+) -> list[dict]:
+    """Fetch raw goal pages with the Notion-defined Active status.
+
+    A narrow read for the Review Direction stage (#30): the service
+    normalizes each page (name, status, project relation ids). Bounded by
+    page_size pagination.
+    """
+
+    return _query_all_pages(token, data_source_id, ACTIVE_GOAL_FILTER, page_size)
 
 
 def fetch_goals_for_project(

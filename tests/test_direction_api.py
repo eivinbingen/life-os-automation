@@ -2,7 +2,7 @@
 from fastapi.testclient import TestClient
 
 from life_os.api import create_app
-from life_os.models.direction import DirectionSummary
+from life_os.models.goal import ProjectRef
 
 
 def _minimal_fetchers():
@@ -16,17 +16,6 @@ def _minimal_fetchers():
         return True
 
     return fetch_events, fetch_tasks, update
-
-
-def _summary(**overrides) -> DirectionSummary:
-    base = dict(
-        week_start="2026-09-21",
-        items=[],
-        statuses=[],
-        warnings=[],
-    )
-    base.update(overrides)
-    return DirectionSummary(**base)
 
 
 def test_direction_endpoint_returns_summary():
@@ -92,6 +81,28 @@ def test_direction_endpoint_501_without_goal_pages_callable():
     assert "not configured" in response.json()["detail"]
 
 
+def test_direction_endpoint_501_without_resolve_projects_callable():
+    """Asymmetric wiring must 501 cleanly, not crash with 500 when
+    build_direction calls the missing resolver."""
+
+    fetch_events, fetch_tasks, update = _minimal_fetchers()
+
+    client = TestClient(
+        create_app(
+            fetch_events,
+            fetch_tasks,
+            update,
+            fetch_active_goal_pages=lambda: [],
+            reviews=_fake_reviews(),
+        )
+    )
+
+    response = client.get("/reviews/weekly/direction?week_start=2026-09-21")
+
+    assert response.status_code == 501
+    assert "not configured" in response.json()["detail"]
+
+
 def test_direction_endpoint_reports_unexpected_failure_as_502():
     fetch_events, fetch_tasks, update = _minimal_fetchers()
 
@@ -137,7 +148,7 @@ def test_direction_endpoint_normalizes_goal_pages():
             update,
             fetch_active_goal_pages=lambda: pages,
             resolve_projects=lambda ids: (
-                [{"id": pid, "name": f"Project {pid}"} for pid in ids],
+                [ProjectRef(id=pid, name=f"Project {pid}") for pid in ids],
                 [],
             ),
             reviews=_fake_reviews(),

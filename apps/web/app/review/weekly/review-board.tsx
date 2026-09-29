@@ -186,13 +186,15 @@ function CleanUpBody({
 
   const runAction = async (id: string, edits: Record<string, unknown>) => {
     if (pendingIds.has(id)) return;
-    setPendingIds(new Set([...pendingIds, id]));
+    // Functional updates: concurrent actions on other rows must not be
+    // wiped by this row's finally running with a stale closure.
+    setPendingIds((prev) => new Set([...prev, id]));
     setActionError(null);
     try {
       const { updateTask } = await import("../../actions");
       const result = await updateTask(id, edits);
       if (result.ok) {
-        setBacklogConfirmIds(new Set([...backlogConfirmIds].filter((x) => x !== id)));
+        setBacklogConfirmIds((prev) => new Set([...prev].filter((x) => x !== id)));
         onActionDone();
       } else {
         setActionError({ id, message: result.error });
@@ -200,7 +202,7 @@ function CleanUpBody({
     } catch {
       setActionError({ id, message: "The task could not be updated. Try again." });
     } finally {
-      setPendingIds(new Set([...pendingIds].filter((x) => x !== id)));
+      setPendingIds((prev) => new Set([...prev].filter((x) => x !== id)));
     }
   };
 
@@ -357,10 +359,19 @@ function DirectionBody({
   const addGoalInFlight = useRef(false);
 
   if (!live || !live.ok) {
+    if (!live) {
+      // Nothing was fetched (completed review): neutral note, not an error.
+      return (
+        <p className="review-completed-note">
+          The live direction context is unavailable for completed reviews; the
+          review retains its answers.
+        </p>
+      );
+    }
     return (
       <div className="integration-alert" role="status">
         <span className="alert-symbol" aria-hidden="true">!</span>
-        <span>{live && "error" in live ? live.error : "The direction summary could not be loaded."}</span>
+        <span>{live.error}</span>
         <button type="button" className="review-retry" onClick={onRetry}>
           Try again
         </button>
@@ -373,13 +384,15 @@ function DirectionBody({
 
   const runGoalAction = async (goal: DirectionGoal) => {
     if (pendingIds.has(goal.id)) return;
-    setPendingIds(new Set([...pendingIds, goal.id]));
+    // Functional updates: concurrent actions on other rows must not be
+    // wiped by this row's finally running with a stale closure.
+    setPendingIds((prev) => new Set([...prev, goal.id]));
     setActionError(null);
     try {
       const { completeGoal } = await import("../../goal-actions");
       const result = await completeGoal(goal.id);
       if (result.ok) {
-        setCompleteConfirmIds(new Set([...completeConfirmIds].filter((x) => x !== goal.id)));
+        setCompleteConfirmIds((prev) => new Set([...prev].filter((x) => x !== goal.id)));
         onActionDone();
       } else {
         setActionError({ id: goal.id, message: result.error });
@@ -387,7 +400,7 @@ function DirectionBody({
     } catch {
       setActionError({ id: goal.id, message: "The goal could not be completed. Try again." });
     } finally {
-      setPendingIds(new Set([...pendingIds].filter((x) => x !== goal.id)));
+      setPendingIds((prev) => new Set([...prev].filter((x) => x !== goal.id)));
     }
   };
 
@@ -528,7 +541,7 @@ function DirectionBody({
           >
             Add Goal
           </button>
-          {addGoalError && (
+          {!addGoalOpen && addGoalError && (
             <p className="review-action-error" role="alert">
               {addGoalError}
             </p>
@@ -617,7 +630,16 @@ function AddProjectDialog({
             if (values.deadline) edits.deadline = values.deadline;
             const result = await createProject(edits);
             if (result.ok) {
+              // The page was created even when the goal-side link failed;
+              // close, but surface the partial failure instead of assuming
+              // the row will show the new project.
               onSaved();
+              if (result.goalLinkError) {
+                setError(
+                  "The project was created but linking it to this goal failed. " +
+                    "Link it from the project page later.",
+                );
+              }
             } else {
               // Failed create: keep the dialog open; the form retains the
               // entered fields for retry.

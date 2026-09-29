@@ -2,34 +2,12 @@ from collections.abc import Callable
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from life_os.integrations.notion_common import page_title as _page_title
 from life_os.models.direction import DirectionGoal, DirectionSummary
 from life_os.models.goal import ProjectRef
+from life_os.services.goals import _normalize_goal
 
 TIMEZONE = "Europe/Zurich"
 _TZ = ZoneInfo(TIMEZONE)
-
-
-def _normalize_goal(page: dict) -> tuple[str | None, str | None, bool, list[str]]:
-    """Normalize a raw goal page into (name, status, status_available,
-    project_ids)."""
-
-    props = page.get("properties", {})
-    name = _page_title(page)
-
-    status = None
-    status_available = False
-    status_prop = props.get("Status", {})
-    if status_prop.get("type") == "status":
-        status = status_prop.get("status", {}).get("name")
-        status_available = status is not None
-
-    project_ids: list[str] = []
-    projects_prop = props.get("Projects", {})
-    if projects_prop.get("type") == "relation":
-        project_ids = [rel["id"] for rel in projects_prop.get("relation", [])]
-
-    return name, status, status_available, project_ids
 
 
 def build_direction(
@@ -43,23 +21,46 @@ def build_direction(
     """Build the Direction stage's goal list from raw goal pages.
 
     Pure normalization: goals without projects stay in items, zero goals
-    is valid, and a failed per-goal project resolution degrades to
-    nameless references rather than dropping the goal.
+    is valid, and a failed per-project resolution degrades to nameless
+    references rather than dropping the goal. Project names resolve once
+    for the union of linked ids across all pages — not per goal — so the
+    stage stays within the frontend's fetch budget under realistic load.
     """
 
-    items: list[DirectionGoal] = []
     all_warnings: list[str] = list(warnings or [])
+    normalized: list[tuple[str, dict, tuple]] = []
+    union_ids: list[str] = []
+    seen: set[str] = set()
     for page in pages:
-        name, status, status_available, project_ids = _normalize_goal(page)
-        projects, project_warnings = resolve_projects(project_ids)
-        all_warnings.extend(project_warnings)
+        name, status, status_available, _area_id, _target_date, project_ids = (
+            _normalize_goal(page)
+        )
+        normalized.append((page["id"], page, (name, status, status_available, project_ids)))
+        for pid in project_ids:
+            if pid not in seen:
+                seen.add(pid)
+                union_ids.append(pid)
+
+    resolved: dict[str, ProjectRef] = {}
+    if union_ids:
+        try:
+            projects, project_warnings = resolve_projects(union_ids)
+            all_warnings.extend(project_warnings)
+            resolved = {project.id: project for project in projects}
+        except Exception as error:
+            # A failed resolution degrades to nameless references with a
+            # statuses entry, never dropped goals.
+            all_warnings.append(f"Could not load linked projects: {error}")
+
+    items: list[DirectionGoal] = []
+    for goal_id, _page, (name, status, status_available, project_ids) in normalized:
         items.append(
             DirectionGoal(
-                id=page["id"],
+                id=goal_id,
                 name=name,
                 status=status,
                 status_available=status_available,
-                projects=projects,
+                projects=[resolved.get(pid, ProjectRef(id=pid, name=None)) for pid in project_ids],
             )
         )
 
