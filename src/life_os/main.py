@@ -17,7 +17,7 @@ from life_os.integrations.notion_courses import fetch_studies_overview
 from life_os.integrations.notion_goals import (
     fetch_active_goals,
     fetch_goal,
-    fetch_projects_for_goal,
+    fetch_projects_by_ids,
 )
 from life_os.integrations.notion_projects import (
     fetch_project,
@@ -101,18 +101,12 @@ def main():
         )
 
     goals_data_source_id = os.getenv("NOTION_GOALS_DATA_SOURCE_ID")
-    projects_for_goal_source = os.getenv("NOTION_PROJECTS_DATA_SOURCE_ID")
 
     def fetch_goal_detail(goal_id: str):
         return _get_goal_detail(
             goal_id,
             fetch_goal=partial(fetch_goal, token),
-            fetch_projects_for_goal=partial(
-                fetch_projects_for_goal,
-                token,
-                projects_for_goal_source,
-                page_size=100,
-            ),
+            fetch_projects_by_ids=partial(fetch_projects_by_ids, token),
             fetch_area_name=partial(_fetch_project_name, token),
         )
 

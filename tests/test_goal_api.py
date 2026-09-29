@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from life_os.api import create_app
 from life_os.models.goal import GoalDetail, ProjectRef
+from life_os.models.notion import Task
 
 
 def _minimal_fetchers():
@@ -146,3 +147,51 @@ def test_active_goals_endpoint_reports_failure_as_502():
 
     assert response.status_code == 502
     assert "could not be read" in response.json()["detail"]
+
+
+def test_active_goals_route_reachable_with_both_callables_wired():
+    """Mirrors main.py's wiring: both callables are gated on the same env
+    var, so both are wired together — /goals/active must not be swallowed
+    by the /goals/{goal_id} path param."""
+
+    fetch_events, fetch_tasks, update = _minimal_fetchers()
+
+    client = TestClient(
+        create_app(
+            fetch_events,
+            fetch_tasks,
+            update,
+            fetch_goal_detail=lambda gid: _detail(),
+            fetch_active_goals=lambda: [Task(id="g1", name="Ship the app")],
+        )
+    )
+
+    response = client.get("/goals/active")
+
+    assert response.status_code == 200
+    assert response.json()[0]["id"] == "g1"
+
+
+def test_goal_endpoint_serializes_projects_as_name_refs_with_task_wiring():
+    """With the integration wiring (Task-shaped fakes converted at the
+    boundary), the projects list serializes as {id, name} pairs — the
+    ProjectRef contract the web GoalProject type assumes."""
+
+    fetch_events, fetch_tasks, update = _minimal_fetchers()
+
+    def fetch_goal_detail(gid):
+        return _detail(
+            projects=[ProjectRef(id="p1", name="Life OS"), ProjectRef(id="p2", name=None)]
+        )
+
+    client = TestClient(
+        create_app(fetch_events, fetch_tasks, update, fetch_goal_detail=fetch_goal_detail)
+    )
+
+    response = client.get("/goals/goal-1")
+
+    assert response.status_code == 200
+    assert response.json()["projects"] == [
+        {"id": "p1", "name": "Life OS"},
+        {"id": "p2", "name": None},
+    ]

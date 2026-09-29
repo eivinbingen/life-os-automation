@@ -16,21 +16,14 @@ class FakeResponse:
         return self.data
 
 
-def goal_page(goal_id: str, status: str = "Active"):
+def goal_page(goal_id: str, status: str = "Active", project_ids: list[str] | None = None):
+    relations = [{"id": pid} for pid in (project_ids or [])]
     return {
         "id": goal_id,
         "properties": {
             "Name": {"type": "title", "title": [{"plain_text": f"Goal {goal_id}"}]},
             "Status": {"type": "status", "status": {"name": status}},
-        },
-    }
-
-
-def project_page(project_id: str):
-    return {
-        "id": project_id,
-        "properties": {
-            "Name": {"type": "title", "title": [{"plain_text": f"Project {project_id}"}]},
+            "Projects": {"type": "relation", "relation": relations},
         },
     }
 
@@ -95,45 +88,45 @@ def test_fetch_goal_failure_raises(monkeypatch):
         raise AssertionError("expected RequestException")
 
 
-def test_fetch_projects_for_goal_filters_by_relation(monkeypatch):
-    bodies = []
+def test_fetch_projects_by_ids_resolves_each_name(monkeypatch):
+    responses = {
+        "p1": FakeResponse(
+            {"properties": {"Name": {"type": "title", "title": [{"plain_text": "Life OS"}]}}}
+        ),
+        "p2": FakeResponse(
+            {"properties": {"Name": {"type": "title", "title": [{"plain_text": "Onboarding"}]}}}
+        ),
+    }
+    requested = []
 
-    def post(**kwargs):
-        bodies.append(kwargs["json"])
-        return FakeResponse(
-            {
-                "results": [project_page("p1"), project_page("p2")],
-                "has_more": False,
-            }
-        )
+    def get(**kwargs):
+        requested.append(kwargs["url"])
+        return responses[kwargs["url"].rsplit("/", 1)[1]]
 
-    monkeypatch.setattr(notion_goals.requests, "post", post)
+    monkeypatch.setattr(notion_goals.requests, "get", get)
 
-    projects = notion_goals.fetch_projects_for_goal(
-        token="secret", projects_data_source_id="projects", goal_id="g1", page_size=100
-    )
+    projects, warnings = notion_goals.fetch_projects_by_ids("secret", ["p1", "p2"])
 
-    assert bodies[0]["filter"] == {"property": "Goal", "relation": {"contains": "g1"}}
-    assert [project.id for project in projects] == ["p1", "p2"]
-    assert projects[0].name == "Project p1"
+    assert [(p.id, p.name) for p in projects] == [("p1", "Life OS"), ("p2", "Onboarding")]
+    assert warnings == []
+    assert len(requested) == 2
 
 
-def test_fetch_projects_for_goal_paginates(monkeypatch):
-    pages = [
-        FakeResponse({"results": [project_page("p1")], "has_more": True, "next_cursor": "c2"}),
-        FakeResponse({"results": [project_page("p2")], "has_more": False}),
-    ]
-    calls = []
+def test_fetch_projects_by_ids_failed_lookup_keeps_nameless_reference(monkeypatch):
+    responses = {
+        "p1": FakeResponse(
+            {"properties": {"Name": {"type": "title", "title": [{"plain_text": "Life OS"}]}}}
+        ),
+    }
 
-    def post(**kwargs):
-        calls.append(kwargs)
-        return pages[len(calls) - 1]
+    def get(**kwargs):
+        missing = FakeResponse({}, error=RequestException("down"))
+        return responses.get(kwargs["url"].rsplit("/", 1)[1], missing)
 
-    monkeypatch.setattr(notion_goals.requests, "post", post)
+    monkeypatch.setattr(notion_goals.requests, "get", get)
 
-    projects = notion_goals.fetch_projects_for_goal(
-        token="secret", projects_data_source_id="projects", goal_id="g1", page_size=1
-    )
+    projects, warnings = notion_goals.fetch_projects_by_ids("secret", ["p1", "missing"])
 
-    assert [project.id for project in projects] == ["p1", "p2"]
-    assert calls[1]["json"]["start_cursor"] == "c2"
+    # A failed lookup never drops the project.
+    assert [(p.id, p.name) for p in projects] == [("p1", "Life OS"), ("missing", None)]
+    assert warnings == ["Could not load names for 1 linked project."]

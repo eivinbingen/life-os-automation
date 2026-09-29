@@ -2,22 +2,9 @@
 
 import { useMemo } from "react";
 
+import { formatStripDate } from "../../date-utils";
 import type { GoalDetail } from "../../goals-actions";
 import { TaskProjectLink } from "../../task-project-link";
-
-// Compact horizontal date for the overview strip, e.g. "31 Dec 2026" —
-// the long weekday format wraps badly in a constrained strip.
-function formatStripDate(value: string | null) {
-  if (!value) return null;
-  const datePart = value.slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null;
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(`${datePart}T12:00:00Z`));
-}
 
 export function GoalDetailBoard({ goal }: { goal: GoalDetail }) {
   const failed = goal.statuses.filter((status) => !status.ok);

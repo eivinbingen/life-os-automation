@@ -2,6 +2,7 @@ import requests
 
 from life_os.integrations.notion_common import (
     NOTION_API_URL,
+    fetch_page_title,
 )
 from life_os.integrations.notion_common import (
     headers as _headers,
@@ -9,6 +10,7 @@ from life_os.integrations.notion_common import (
 from life_os.integrations.notion_common import (
     page_title as _page_title,
 )
+from life_os.models.goal import ProjectRef
 from life_os.models.notion import Task
 
 
@@ -53,38 +55,33 @@ def fetch_goal(token: str, goal_id: str) -> dict:
     return response.json()
 
 
-def fetch_projects_for_goal(
-    token: str, projects_data_source_id: str, goal_id: str, page_size: int
-) -> list[Task]:
-    """Fetch active and otherwise-statused projects linked to a goal.
+def fetch_projects_by_ids(
+    token: str, project_ids: list[str]
+) -> tuple[list[ProjectRef], list[str]]:
+    """Resolve linked-project names from the goal page's Projects relation ids.
 
     The goal-side `Projects` relation is the authoritative link (the
-    project-side `Goal` relation is not auto-synced), so the join is made
-    by querying the projects data source for pages whose synced project-side
-    `Goal` relation contains the goal id — and falls back to nothing when
-    empty. Names resolve from the same query results.
+    project-side `Goal` relation is not auto-synced), so the service
+    extracts the ids from the goal page and this resolves each by page
+    read. A failed lookup never drops the project: it returns a nameless
+    reference plus a warning.
     """
 
-    projects: dict[str, Task] = {}
-    body = {
-        "filter": {
-            "property": "Goal",
-            "relation": {"contains": goal_id},
-        },
-        "page_size": page_size,
-    }
-    while True:
-        res = requests.post(
-            url=f"{NOTION_API_URL}/data_sources/{projects_data_source_id}/query",
-            headers=_headers(token),
-            json=body,
-        )
-        res.raise_for_status()
-        data = res.json()
-        for page in data["results"]:
-            project = Task(id=page["id"], name=_page_title(page) or "")
-            projects.setdefault(project.id, project)
-        if not data["has_more"]:
-            break
-        body["start_cursor"] = data["next_cursor"]
-    return list(projects.values())
+    projects: list[ProjectRef] = []
+    warnings: list[str] = []
+    failed = 0
+    for project_id in project_ids:
+        try:
+            name = fetch_page_title(token, project_id)
+            if name is None:
+                failed += 1
+            projects.append(ProjectRef(id=project_id, name=name))
+        except requests.RequestException:
+            failed += 1
+            projects.append(ProjectRef(id=project_id, name=None))
+
+    if failed:
+        noun = "project" if failed == 1 else "projects"
+        warnings.append(f"Could not load names for {failed} linked {noun}.")
+
+    return projects, warnings

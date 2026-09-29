@@ -460,6 +460,24 @@ def create_app(
                     detail=f"The project could not be read: {error}",
                 ) from error
 
+    # /goals/active registers before /goals/{goal_id}: Starlette matches in
+    # registration order, so the path param would otherwise swallow the
+    # literal segment (route-ordering test covers this).
+    if fetch_active_goals is not None:
+
+        @app.get("/goals/active")
+        def active_goals_endpoint() -> list:
+            try:
+                return fetch_active_goals()
+            except Exception as error:
+                # Live direction data is labeled unavailable upstream rather
+                # than blocking; a raised error here means the whole read
+                # failed unexpectedly.
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"The active goals could not be read: {error}",
+                ) from error
+
     if fetch_goal_detail is not None:
 
         @app.get("/goals/{goal_id}")
@@ -476,21 +494,6 @@ def create_app(
                 raise HTTPException(
                     status_code=502,
                     detail=f"The goal could not be read: {error}",
-                ) from error
-
-    if fetch_active_goals is not None:
-
-        @app.get("/goals/active")
-        def active_goals_endpoint() -> list:
-            try:
-                return fetch_active_goals()
-            except Exception as error:
-                # Live direction data is labeled unavailable upstream rather
-                # than blocking; a raised error here means the whole read
-                # failed unexpectedly.
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"The active goals could not be read: {error}",
                 ) from error
 
     if create_task is not None:
