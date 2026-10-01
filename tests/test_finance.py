@@ -293,9 +293,9 @@ class TestBuildFinanceReview:
 
         assert review.month == "2026-09-01"
         assert [account.name for account in review.accounts] == ["Checking"]
-        assert review.total_actual == 6850.0
+        assert review.total_actual == 6600.0
         assert review.total_forecast == 4100.0
-        assert review.total_difference == 4100.0 - 6850.0
+        assert review.total_difference == 4100.0 - 6600.0
         assert [c.label for c in review.categories] == list(CATEGORY_MAPPINGS)
 
     def test_total_difference_matches_sum_of_categories(self):
@@ -324,7 +324,7 @@ class TestGetFinanceReview:
         )
 
         assert review.month == "2026-09-01"
-        assert review.total_actual == 6850.0
+        assert review.total_actual == 6600.0
 
     def test_raises_on_mapping_problems(self):
         def fetch_data(month):
@@ -341,3 +341,13 @@ class TestGetFinanceReview:
 
         with pytest.raises(YnabError):
             get_finance_review("2026-09-01", fetch_data, CATEGORY_MAPPINGS, EXCLUDED_CATEGORIES)
+
+
+def test_credit_card_payment_activity_does_not_change_spending():
+    categories = make_categories()
+    baseline = build_monthly_actuals(categories, CATEGORY_MAPPINGS)
+    categories["9bb0b250-2853-48de-ab57-3123eca5cc45"]["activity"] = -8125.0
+    assert build_monthly_actuals(categories, CATEGORY_MAPPINGS) == baseline
+    assert not validate_category_mapping(
+        categories, CATEGORY_MAPPINGS, EXCLUDED_CATEGORIES
+    ).has_problems()
