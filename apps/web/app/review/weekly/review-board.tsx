@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
+  APP_TIME_ZONE,
   formatDay,
   formatItemDate,
   shiftDay,
@@ -12,6 +13,8 @@ import { TaskProjectLink } from "../../task-project-link";
 import { GoalForm } from "../../goal-form";
 import { ProjectForm } from "../../project-form";
 import type {
+  AheadItem,
+  AheadSummary,
   CleanUpSummary,
   DirectionGoal,
   DirectionSummary,
@@ -30,9 +33,20 @@ const SECTIONS = [
 
 type SectionKey = (typeof SECTIONS)[number]["key"];
 
-function formatDayShort(value: string) {
-  return formatDay(value);
+// Retries and draft persistence all load the same server-action module; the
+// promise is cached so every caller resolves the same module instance
+// rather than re-running the dynamic import.
+let reviewActionsPromise: Promise<typeof import("./review-actions")> | null = null;
+function loadReviewActions() {
+  reviewActionsPromise ??= import("./review-actions");
+  return reviewActionsPromise;
 }
+
+const aheadTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: APP_TIME_ZONE,
+});
 
 function formatTimestamp(value: string, timeZone: string) {
   return new Intl.DateTimeFormat("en-GB", {
@@ -735,6 +749,267 @@ function CleanUpRescheduleDialog({
   );
 }
 
+/** Zurich wall-clock event label; all-day and continuation rows carry their
+ * own chips, so this only describes the time bounds. */
+function aheadEventMeta(item: AheadItem): string {
+  if (item.all_day) return "All day";
+  if (!item.start) return "";
+  const start = aheadTimeFormatter.format(new Date(item.start));
+  if (!item.end) return start;
+  if (item.end.slice(0, 10) === item.day) {
+    return `${start}–${aheadTimeFormatter.format(new Date(item.end))}`;
+  }
+  return `${start} · until ${formatItemDate(item.end)}`;
+}
+
+function AheadBody({
+  live,
+  isCompleted,
+  onRetry,
+  onActionDone,
+}: {
+  live?: { ok: true; summary: AheadSummary } | { ok: false; error: string } | null;
+  isCompleted: boolean;
+  onRetry: () => void;
+  onActionDone: () => void;
+}) {
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null);
+  const [reschedule, setReschedule] = useState<{
+    id: string;
+    scheduled: string | null;
+    due: string | null;
+  } | null>(null);
+
+  if (!live) {
+    // Nothing was fetched (completed review): neutral note, not an error.
+    return (
+      <p className="review-completed-note">
+        The live ahead timeline is unavailable for completed reviews; the
+        review retains its answers.
+      </p>
+    );
+  }
+  if (!live.ok) {
+    return (
+      <div className="integration-alert" role="status">
+        <span className="alert-symbol" aria-hidden="true">!</span>
+        <span>{live.error}</span>
+        <button type="button" className="review-retry" onClick={onRetry}>
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  const summary = live.summary;
+  const failed = summary.statuses.filter((status) => !status.ok);
+  // Exceptions come from the task read, so their absence is only known-empty
+  // when that read succeeded.
+  const notionFailed = failed.some((status) => status.name === "Notion");
+
+  const runAction = async (id: string, edits: Record<string, unknown>) => {
+    if (pendingIds.has(id)) return;
+    // Functional updates: concurrent actions on other rows must not be
+    // wiped by this row's finally running with a stale closure.
+    setPendingIds((prev) => new Set([...prev, id]));
+    setActionError(null);
+    try {
+      const { updateTask } = await import("../../actions");
+      const result = await updateTask(id, edits);
+      if (result.ok) {
+        setReschedule((current) => (current && current.id === id ? null : current));
+        onActionDone();
+      } else {
+        setActionError({ id, message: result.error });
+      }
+    } catch {
+      setActionError({ id, message: "The task could not be updated. Try again." });
+    } finally {
+      setPendingIds((prev) => new Set([...prev].filter((x) => x !== id)));
+    }
+  };
+
+  // The service sorts items chronologically; grouping by day is a
+  // rendering concern.
+  const days: { day: string; items: AheadItem[] }[] = [];
+  for (const item of summary.items) {
+    const current = days[days.length - 1];
+    if (current && current.day === item.day) current.items.push(item);
+    else days.push({ day: item.day, items: [item] });
+  }
+
+  const rescheduleButton = (id: string, scheduled: string | null, due: string | null) => (
+    <button
+      type="button"
+      className="review-queue-reschedule"
+      disabled={pendingIds.has(id)}
+      onClick={() => setReschedule({ id, scheduled, due })}
+    >
+      Reschedule
+    </button>
+  );
+
+  return (
+    <div className="review-queue-wrap">
+      {failed.length > 0 ? (
+        <div className="integration-alert" role="status">
+          <span className="alert-symbol" aria-hidden="true">!</span>
+          <span>
+            {failed.map((status) => status.name).join(" and ")}{" "}
+            {failed.length === 1 ? "is" : "are"} unavailable. Some information may be
+            missing.
+          </span>
+          <button type="button" className="review-retry" onClick={onRetry}>
+            Try again
+          </button>
+        </div>
+      ) : null}
+      {failed.length === 0 && days.length === 0 ? (
+        <p className="review-queue-empty">
+          Nothing scheduled, due, or on the calendar in the week ahead.
+        </p>
+      ) : (
+        days.map((group) => (
+          <div key={group.day} className="ahead-day-group">
+            <h4 className="ahead-day">
+              <time dateTime={group.day}>{formatDay(group.day)}</time>
+            </h4>
+            <ul className="review-queue">
+              {group.items.map((item) => (
+                <li key={item.id} className="review-queue-row">
+                  <div className="review-queue-main">
+                    <span className="review-queue-name">{item.name}</span>
+                    {item.project_name && (
+                      <span className="review-queue-project">
+                        <span>Project</span>
+                        <TaskProjectLink
+                          projectId={item.project_id}
+                          projectName={item.project_name}
+                          openInNewTab
+                        />
+                      </span>
+                    )}
+                    {item.course_name && (
+                      <span className="review-queue-project">
+                        <span>Course</span>
+                        <span>{item.course_name}</span>
+                      </span>
+                    )}
+                    <div className="review-queue-meta">
+                      <span className="review-reason-chip">
+                        {item.kind === "scheduled"
+                          ? "Scheduled"
+                          : item.kind === "due"
+                            ? "Due"
+                            : item.kind === "event"
+                              ? "Event"
+                              : "Assessment"}
+                      </span>
+                      {item.kind === "event" ? (
+                        <>
+                          {item.continues && (
+                            <span className="ahead-ongoing-chip">Ongoing</span>
+                          )}
+                          <span>{aheadEventMeta(item)}</span>
+                        </>
+                      ) : item.kind === "scheduled" ? (
+                        <>
+                          {item.scheduled && <span>{formatItemDate(item.scheduled)}</span>}
+                          {item.due && item.due.slice(0, 10) !== item.day && (
+                            <span>Due {formatItemDate(item.due)}</span>
+                          )}
+                        </>
+                      ) : item.kind === "due" ? (
+                        <>
+                          {item.due && <span>{formatItemDate(item.due)}</span>}
+                          {item.scheduled && item.scheduled.slice(0, 10) !== item.day && (
+                            <span>Scheduled {formatItemDate(item.scheduled)}</span>
+                          )}
+                        </>
+                      ) : (
+                        <span>{item.when ? formatItemDate(item.when) : null}</span>
+                      )}
+                    </div>
+                  </div>
+                  {!isCompleted && item.task_id && (
+                    <div className="review-queue-actions">
+                      {rescheduleButton(item.task_id, item.scheduled, item.due)}
+                    </div>
+                  )}
+                  {item.task_id && actionError?.id === item.task_id && (
+                    <p className="review-action-error" role="alert">
+                      {actionError.message}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      )}
+
+      <div className="review-hygiene">
+        <h3>Planning exceptions</h3>
+        <p>Deadlines in the ahead week with no scheduled work date.</p>
+        {notionFailed ? null : summary.exceptions.length === 0 ? (
+          <p className="review-queue-empty">No deadlines without scheduled work.</p>
+        ) : (
+          <ul className="review-queue">
+            {summary.exceptions.map((exception) => (
+              <li key={exception.task_id} className="review-queue-row">
+                <div className="review-queue-main">
+                  <span className="review-queue-name">{exception.name}</span>
+                  {exception.project_name && (
+                    <span className="review-queue-project">
+                      <span>Project</span>
+                      <TaskProjectLink
+                        projectId={exception.project_id}
+                        projectName={exception.project_name}
+                        openInNewTab
+                      />
+                    </span>
+                  )}
+                  <div className="review-queue-meta">
+                    <span className="review-reason-chip">No scheduled date</span>
+                    {exception.due && <span>Due {formatItemDate(exception.due)}</span>}
+                  </div>
+                </div>
+                {!isCompleted && (
+                  <div className="review-queue-actions">
+                    {rescheduleButton(exception.task_id, null, exception.due)}
+                  </div>
+                )}
+                {actionError?.id === exception.task_id && (
+                  <p className="review-action-error" role="alert">
+                    {actionError.message}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {summary.warnings.length > 0 && (
+        <div className="integration-alert" role="status">
+          <span className="alert-symbol" aria-hidden="true">!</span>
+          <span>{summary.warnings.join(" ")}</span>
+        </div>
+      )}
+
+      {reschedule && (
+        <CleanUpRescheduleDialog
+          item={{ scheduled: reschedule.scheduled, due: reschedule.due }}
+          pending={pendingIds.has(reschedule.id)}
+          onClose={() => setReschedule(null)}
+          onSave={(value) => void runAction(reschedule.id, { scheduled: value || null })}
+        />
+      )}
+    </div>
+  );
+}
+
 function Donut({ ratio, available }: { ratio: number; available: boolean }) {
   // A small cake diagram: filled arc shows the done share. Unavailable
   // metrics render an empty dashed ring instead of a zero.
@@ -919,6 +1194,7 @@ export function ReviewBoard({
   lookBack,
   cleanUp,
   direction,
+  ahead,
 }: {
   initialReview: ReviewRecord;
   history: ReviewRecord[];
@@ -926,6 +1202,7 @@ export function ReviewBoard({
   lookBack?: { ok: true; summary: LookBackSummary } | { ok: false; error: string } | null;
   cleanUp?: { ok: true; summary: CleanUpSummary } | { ok: false; error: string } | null;
   direction?: { ok: true; summary: DirectionSummary } | { ok: false; error: string } | null;
+  ahead?: { ok: true; summary: AheadSummary } | { ok: false; error: string } | null;
 }) {
   const [review, setReview] = useState(initialReview);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({ look_back: true, commit: true });
@@ -955,7 +1232,7 @@ export function ReviewBoard({
     if (isCompleted || retryingLookBack) return;
     setRetryingLookBack(true);
     try {
-      const { fetchLookBack } = await import("./review-actions");
+      const { fetchLookBack } = await loadReviewActions();
       setLiveLookBack(await fetchLookBack(review.week_start));
     } finally {
       setRetryingLookBack(false);
@@ -970,7 +1247,7 @@ export function ReviewBoard({
     if (retryingCleanUp) return;
     setRetryingCleanUp(true);
     try {
-      const { fetchCleanUp } = await import("./review-actions");
+      const { fetchCleanUp } = await loadReviewActions();
       setLiveCleanUp(await fetchCleanUp(review.week_start));
     } finally {
       setRetryingCleanUp(false);
@@ -985,12 +1262,27 @@ export function ReviewBoard({
     if (retryingDirection) return;
     setRetryingDirection(true);
     try {
-      const { fetchDirection } = await import("./review-actions");
+      const { fetchDirection } = await loadReviewActions();
       setLiveDirection(await fetchDirection(review.week_start));
     } finally {
       setRetryingDirection(false);
     }
   }, [retryingDirection, review.week_start]);
+
+  // The ahead timeline is fetched server-side; a client retry re-runs the
+  // same server action so a transient failure is recoverable in place.
+  const [liveAhead, setLiveAhead] = useState(ahead ?? null);
+  const [retryingAhead, setRetryingAhead] = useState(false);
+  const retryAhead = useCallback(async () => {
+    if (retryingAhead) return;
+    setRetryingAhead(true);
+    try {
+      const { fetchAhead } = await loadReviewActions();
+      setLiveAhead(await fetchAhead(review.week_start));
+    } finally {
+      setRetryingAhead(false);
+    }
+  }, [retryingAhead, review.week_start]);
 
   const persist = useCallback(
     async (
@@ -1006,7 +1298,7 @@ export function ReviewBoard({
       setSaveError(null);
 
       try {
-        const { completeReview, saveReviewDraft } = await import("./review-actions");
+        const { completeReview, saveReviewDraft } = await loadReviewActions();
         let current = review;
         let payload = edits;
         let complete = options.complete;
@@ -1051,7 +1343,6 @@ export function ReviewBoard({
     setOpenSections((current) => ({ ...current, [key]: !current[key] }));
   };
 
-  const nextWeekPreviewStart = shiftDay(review.ahead_start, 0);
   const router = useRouter();
   const previousWeekStart = shiftDay(review.week_start, -7);
   const followingWeekStart = shiftDay(review.week_start, 7);
@@ -1221,13 +1512,16 @@ export function ReviewBoard({
         onToggle={() => toggleSection("ahead")}
         onPass={() => markPassed("ahead")}
       >
+        <AheadBody
+          live={liveAhead}
+          isCompleted={isCompleted}
+          onRetry={() => void retryAhead()}
+          onActionDone={() => void retryAhead()}
+        />
         <p className="review-prompt">
-          Next week ({formatDayShort(review.ahead_start)} – {formatDayShort(review.ahead_end)}) is paired
-          to the reviewed week. The chronological look-ahead timeline arrives in a later slice;
-          the paired dates are fixed to this review.
-        </p>
-        <p className="review-dates-inline">
-          Ahead week starting <time dateTime={nextWeekPreviewStart}>{formatDayShort(review.ahead_start)}</time>
+          Next week ({formatDayRange(review.ahead_start, review.ahead_end)}) is paired to the
+          reviewed week. Rescheduling changes only Scheduled and keeps Due; the calendar
+          stays read-only.
         </p>
       </ReviewSection>
 

@@ -93,6 +93,18 @@ def main():
             page_size=100,
         )
 
+    def fetch_studies_range(start: date, end: date):
+        # Anchored to the requested window (the ahead week) rather than
+        # today, so review stages read the same days the review covers.
+        return fetch_studies_overview(
+            token,
+            courses_data_source_id,
+            data_source_id,
+            today=start,
+            page_size=100,
+            horizon_days=(end - start).days,
+        )
+
     goals_data_source_id = os.getenv("NOTION_GOALS_DATA_SOURCE_ID")
     # One shared check gates both goal reads and writes: a blank value
     # must not wire a query or a create parent against an empty id.
@@ -153,6 +165,7 @@ def main():
         fetch_done_week_tasks,
         get_finance=get_finance,
         fetch_studies=fetch_studies,
+        fetch_studies_range=fetch_studies_range,
         fetch_project_detail=fetch_project_detail,
         fetch_goal_detail=(
             fetch_goal_detail if goals_configured else None

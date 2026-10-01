@@ -2,11 +2,13 @@ import { connection } from "next/server";
 
 import { defaultReviewWeek, getLocalDay, startOfWeek } from "../../date-utils";
 import {
+  fetchAhead,
   fetchCleanUp,
   fetchDirection,
   fetchLookBack,
   fetchReviewByWeek,
   startReview,
+  type AheadSummary,
   type CleanUpSummary,
   type DirectionSummary,
   type LookBackSummary,
@@ -52,17 +54,19 @@ export default async function WeeklyReviewPage({
   const historyError = historyResult.ok ? null : historyResult.error;
 
   // A completed record renders its fixed saved summary from the record
-  // itself, so live look-back data is only needed for drafts. The three
+  // itself, so live look-back data is only needed for drafts. The four
   // reads share no data; they render in the slowest single fetch's time,
   // not the sum.
   let lookBack: { ok: true; summary: LookBackSummary } | { ok: false; error: string } | null = null;
   let cleanUp: { ok: true; summary: CleanUpSummary } | { ok: false; error: string } | null = null;
   let direction: { ok: true; summary: DirectionSummary } | { ok: false; error: string } | null = null;
+  let ahead: { ok: true; summary: AheadSummary } | { ok: false; error: string } | null = null;
   if (review.status !== "completed") {
-    [lookBack, cleanUp, direction] = await Promise.all([
+    [lookBack, cleanUp, direction, ahead] = await Promise.all([
       fetchLookBack(weekStart),
       fetchCleanUp(weekStart),
       fetchDirection(weekStart),
+      fetchAhead(weekStart),
     ]);
   }
 
@@ -78,6 +82,7 @@ export default async function WeeklyReviewPage({
       lookBack={lookBack}
       cleanUp={cleanUp}
       direction={direction}
+      ahead={ahead}
     />
   );
 }

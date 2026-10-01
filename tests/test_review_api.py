@@ -431,3 +431,142 @@ def test_clean_up_endpoint_normalizes_non_monday_week_start(look_back_app):
     response = client.get("/reviews/weekly/clean-up", params={"week_start": "2026-09-16"})
     assert response.status_code == 200
     assert response.json()["week_start"] == WEEK.isoformat()
+
+
+@pytest.fixture
+def ahead_app(tmp_path):
+    from life_os.models.calendar import CalendarEvent
+
+    store = WeeklyReviewRepository(path=tmp_path / "var" / "life-os" / "weekly-reviews.json")
+
+    def fetch_events(day):
+        return []
+
+    def fetch_tasks(day):
+        return TaskFetchResult(tasks=[])
+
+    def update_task(task_id, update, done):
+        return True
+
+    def fetch_week_events(start, end):
+        from zoneinfo import ZoneInfo
+
+        return [
+            CalendarEvent(
+                id="e1",
+                title="Kickoff",
+                start=datetime(2026, 9, 22, 9, 0, tzinfo=ZoneInfo("Europe/Zurich")),
+                end=datetime(2026, 9, 22, 10, 0, tzinfo=ZoneInfo("Europe/Zurich")),
+            )
+        ]
+
+    def fetch_week_tasks(start, end):
+        from life_os.models.notion import Task
+
+        return TaskFetchResult(
+            tasks=[Task(id="t1", name="Launch prep", scheduled=date(2026, 9, 23))]
+        )
+
+    def fetch_studies_range(start, end):
+        from life_os.models.courses import Course, CourseScheduleItem, StudiesOverview
+
+        return StudiesOverview(
+            courses=[Course(id="c1", name="Linear Algebra")],
+            upcoming=[
+                CourseScheduleItem(
+                    id="c1:exam",
+                    name="Exam / Final Deadline",
+                    kind="assessment",
+                    course_id="c1",
+                    course_name="Linear Algebra",
+                    due=date(2026, 9, 24),
+                )
+            ],
+        )
+
+    app = create_app(
+        fetch_events,
+        fetch_tasks,
+        update_task,
+        fetch_week_events=fetch_week_events,
+        fetch_week_tasks=fetch_week_tasks,
+        fetch_studies_range=fetch_studies_range,
+        reviews=store,
+    )
+    return store, TestClient(app)
+
+
+def test_ahead_endpoint_returns_chronological_timeline(ahead_app):
+    store, client = ahead_app
+    response = client.get("/reviews/weekly/ahead", params={"week_start": WEEK.isoformat()})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["week_start"] == WEEK.isoformat()
+    assert body["week_end"] == date(2026, 9, 20).isoformat()
+    assert body["ahead_start"] == date(2026, 9, 21).isoformat()
+    assert body["ahead_end"] == date(2026, 9, 27).isoformat()
+    assert body["timezone"] == "Europe/Zurich"
+    assert [(item["day"], item["kind"]) for item in body["items"]] == [
+        ("2026-09-22", "event"),
+        ("2026-09-23", "scheduled"),
+        ("2026-09-24", "assessment"),
+    ]
+    assert body["statuses"] == []
+    assert body["warnings"] == []
+
+
+def test_ahead_endpoint_normalizes_non_monday_week_start(ahead_app):
+    store, client = ahead_app
+    response = client.get("/reviews/weekly/ahead", params={"week_start": "2026-09-16"})
+    assert response.status_code == 200
+    assert response.json()["week_start"] == WEEK.isoformat()
+
+
+def test_ahead_endpoint_unconfigured_studies_status(tmp_path):
+    store = WeeklyReviewRepository(path=tmp_path / "var" / "life-os" / "weekly-reviews.json")
+
+    def fetch_events(day):
+        return []
+
+    def fetch_tasks(day):
+        return TaskFetchResult(tasks=[])
+
+    def update_task(task_id, update, done):
+        return True
+
+    fetch_week_events, fetch_week_tasks, _ = week_fetchers()
+    app = create_app(
+        fetch_events,
+        fetch_tasks,
+        update_task,
+        fetch_week_events=fetch_week_events,
+        fetch_week_tasks=fetch_week_tasks,
+        reviews=store,
+    )
+    client = TestClient(app)
+    response = client.get("/reviews/weekly/ahead", params={"week_start": WEEK.isoformat()})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["statuses"] == [
+        {
+            "name": "Studies",
+            "ok": False,
+            "error": "Studies context is not configured on this service.",
+        }
+    ]
+    assert body["items"] == []
+
+
+def test_ahead_route_not_swallowed_by_review_id_route(review_app):
+    store, client = review_app
+    # review_app registers no fetch_week_tasks; the specific route must still
+    # win over /reviews/weekly/{review_id} and return 501, not a 404.
+    response = client.get("/reviews/weekly/ahead", params={"week_start": WEEK.isoformat()})
+    assert response.status_code == 501
+    assert "ahead summary" in response.json()["detail"]
+
+
+def test_week_endpoint_removed(review_app):
+    store, client = review_app
+    response = client.get("/week")
+    assert response.status_code == 404

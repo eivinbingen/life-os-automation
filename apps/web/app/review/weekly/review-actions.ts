@@ -307,3 +307,71 @@ export async function fetchDirection(
     };
   }
 }
+
+export type AheadItem = {
+  id: string;
+  kind: "scheduled" | "due" | "event" | "assessment";
+  day: string;
+  name: string;
+  when: string | null;
+  task_id: string | null;
+  project_id: string | null;
+  project_name: string | null;
+  course_id: string | null;
+  course_name: string | null;
+  scheduled: string | null;
+  due: string | null;
+  event_id: string | null;
+  start: string | null;
+  end: string | null;
+  all_day: boolean;
+  continues: boolean;
+};
+
+export type AheadException = {
+  task_id: string;
+  name: string;
+  due: string | null;
+  project_id: string | null;
+  project_name: string | null;
+};
+
+export type AheadSummary = {
+  week_start: string;
+  week_end: string;
+  ahead_start: string;
+  ahead_end: string;
+  timezone: string;
+  captured_at: string;
+  items: AheadItem[];
+  exceptions: AheadException[];
+  statuses: { name: string; ok: boolean; error: string | null }[];
+  warnings: string[];
+};
+
+export async function fetchAhead(
+  weekStart: string,
+): Promise<{ ok: true; summary: AheadSummary } | { ok: false; error: string }> {
+  const base = apiUrl();
+  if (!base) {
+    return { ok: false, error: "The connection to the local Life OS service is not configured." };
+  }
+  try {
+    const response = await fetch(
+      `${base}/reviews/weekly/ahead?week_start=${encodeURIComponent(weekStart)}`,
+      {
+        cache: "no-store",
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+    if (!response.ok) {
+      return { ok: false, error: "The ahead timeline could not be loaded. Please try again." };
+    }
+    return { ok: true, summary: (await response.json()) as AheadSummary };
+  } catch {
+    return {
+      ok: false,
+      error: "The Life OS service could not be reached. Check that it is running, then try again.",
+    };
+  }
+}
