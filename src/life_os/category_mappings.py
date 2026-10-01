@@ -13,7 +13,6 @@ CATEGORY_MAPPINGS = {
         "4c0925b4-987c-4808-b0a5-f28c4cda25d8",
         "04ebb144-bcc9-41bb-8ce2-f89b680a6154",
         "d400eb1f-12ac-4b0d-9fcb-96ecb15f15ee",
-        "9bb0b250-2853-48de-ab57-3123eca5cc45",
     ],
     "travel & one-offs": [
         "3f644c83-dad6-45f8-ac09-80c408fa0b08",
@@ -23,6 +22,8 @@ CATEGORY_MAPPINGS = {
 }
 
 EXCLUDED_CATEGORIES = {
+    # Purchases count in spending categories; card payments must not count again.
+    "9bb0b250-2853-48de-ab57-3123eca5cc45": "Eivin kredittkort (credit-card payments)",
     "7af38ec2-d0a6-4369-82a7-000851be9a73": "Uncategorized",
     "495715b7-6666-4877-b908-02d44bbcb8cb": "Inflow",
     "b2932953-2d80-4a9e-93a6-9175f4d5d45b": "Emergency fund",
