@@ -114,3 +114,74 @@ def test_project_endpoint_reports_unexpected_failure_as_502():
 
     assert response.status_code == 502
     assert "could not be read" in response.json()["detail"]
+
+
+def test_assignable_projects_endpoint_returns_id_and_name_list():
+    fetch_events, fetch_tasks, update = _minimal_fetchers()
+    app = create_app(
+        fetch_events,
+        fetch_tasks,
+        update,
+        fetch_assignable_projects=lambda: [
+            Task(id="p1", name="Corporate Finance"),
+            Task(id="p2", name="Life OS"),
+        ],
+    )
+    client = TestClient(app)
+
+    response = client.get("/projects/assignable")
+    assert response.status_code == 200
+    # Like /goals/active, the response carries full Task-shaped entries;
+    # the picker reads id and name.
+    assert response.json() == [
+        {
+            "id": "p1",
+            "name": "Corporate Finance",
+            "done": False,
+            "scheduled": None,
+            "due": None,
+            "project_id": None,
+            "project_name": None,
+            "course_id": None,
+        },
+        {
+            "id": "p2",
+            "name": "Life OS",
+            "done": False,
+            "scheduled": None,
+            "due": None,
+            "project_id": None,
+            "project_name": None,
+            "course_id": None,
+        },
+    ]
+
+
+def test_assignable_projects_endpoint_unconfigured_answers_501():
+    fetch_events, fetch_tasks, update = _minimal_fetchers()
+    client = TestClient(create_app(fetch_events, fetch_tasks, update))
+
+    # The literal route must win over /projects/{project_id}, answering an
+    # explicit 501 rather than being swallowed as a path param.
+    response = client.get("/projects/assignable")
+    assert response.status_code == 501
+    assert response.json()["detail"] == "Assignable projects are not configured on this service."
+
+
+def test_assignable_projects_endpoint_reports_failure_as_502():
+    fetch_events, fetch_tasks, update = _minimal_fetchers()
+
+    def fetch_assignable():
+        raise RuntimeError("notion down")
+
+    app = create_app(
+        fetch_events,
+        fetch_tasks,
+        update,
+        fetch_assignable_projects=fetch_assignable,
+    )
+    client = TestClient(app)
+
+    response = client.get("/projects/assignable")
+    assert response.status_code == 502
+    assert "could not be read" in response.json()["detail"]

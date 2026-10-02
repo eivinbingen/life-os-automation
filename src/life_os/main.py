@@ -25,6 +25,7 @@ from life_os.integrations.notion_goals import (
 )
 from life_os.integrations.notion_projects import (
     create_project,
+    fetch_assignable_projects,
     fetch_project,
     fetch_tasks_for_project,
     update_project,
@@ -33,6 +34,7 @@ from life_os.integrations.notion_tasks import (
     _fetch_project_name,
     create_task,
     fetch_done_tasks_for_range,
+    fetch_floating_tasks,
     fetch_tasks_for_day,
     fetch_tasks_for_range,
     update_task,
@@ -67,6 +69,13 @@ def main():
     )
     fetch_done_week_tasks = partial(
         fetch_done_tasks_for_range,
+        token,
+        data_source_id,
+        page_size=100,
+    )
+    # The hygiene queue's floating read is week-independent (#29).
+    fetch_floating = partial(
+        fetch_floating_tasks,
         token,
         data_source_id,
         page_size=100,
@@ -163,6 +172,7 @@ def main():
         fetch_week_events,
         fetch_week_tasks,
         fetch_done_week_tasks,
+        fetch_floating_tasks=fetch_floating,
         get_finance=get_finance,
         fetch_studies=fetch_studies,
         fetch_studies_range=fetch_studies_range,
@@ -183,6 +193,11 @@ def main():
             else None
         ),
         update_project=partial(update_project, token) if projects_configured else None,
+        fetch_assignable_projects=(
+            partial(fetch_assignable_projects, token, projects_data_source_id, page_size=100)
+            if projects_configured
+            else None
+        ),
         fetch_active_goal_pages=(
             fetch_goals_active_pages if goals_configured else None
         ),

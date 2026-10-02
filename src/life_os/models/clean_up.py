@@ -21,6 +21,21 @@ class CleanUpItem:
 
 
 @dataclass
+class HygieneItem:
+    """One incomplete task with no time anchor (neither Scheduled nor Due).
+
+    Scheduled and Due are empty by the predicate, so they are not carried;
+    a set project_id with a null project_name means the name lookup failed
+    (unknown), distinct from a null project_id (no project).
+    """
+
+    id: str
+    name: str
+    project_id: str | None
+    project_name: str | None
+
+
+@dataclass
 class CleanUpSummary:
     """Live Clean Up queue; never persisted as review history."""
 
@@ -30,5 +45,6 @@ class CleanUpSummary:
     timezone: str
     captured_at: datetime
     items: list[CleanUpItem] = field(default_factory=list)
+    hygiene: list[HygieneItem] = field(default_factory=list)
     statuses: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)

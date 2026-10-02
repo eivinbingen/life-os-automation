@@ -132,7 +132,10 @@ def week_fetchers():
     def fetch_done_week_tasks(start, end):
         return TaskFetchResult(tasks=[])
 
-    return fetch_week_events, fetch_week_tasks, fetch_done_week_tasks
+    def fetch_floating_tasks():
+        return TaskFetchResult(tasks=[])
+
+    return fetch_week_events, fetch_week_tasks, fetch_done_week_tasks, fetch_floating_tasks
 
 
 @pytest.fixture
@@ -148,7 +151,7 @@ def look_back_app(tmp_path):
     def update_task(task_id, update, done):
         return True
 
-    fetch_week_events, fetch_week_tasks, fetch_done_week_tasks = week_fetchers()
+    fetch_week_events, fetch_week_tasks, fetch_done_week_tasks, fetch_floating = week_fetchers()
     app = create_app(
         fetch_events,
         fetch_tasks,
@@ -156,6 +159,7 @@ def look_back_app(tmp_path):
         fetch_week_events=fetch_week_events,
         fetch_week_tasks=fetch_week_tasks,
         fetch_done_week_tasks=fetch_done_week_tasks,
+        fetch_floating_tasks=fetch_floating,
         reviews=store,
     )
     return store, TestClient(app)
@@ -357,7 +361,7 @@ def test_clean_up_endpoint_qualifying_tasks_with_flags(tmp_path):
             ],
         )
 
-    fetch_week_events, _, fetch_done_week_tasks = week_fetchers()
+    fetch_week_events, _, fetch_done_week_tasks, fetch_floating = week_fetchers()
     app = create_app(
         fetch_events,
         fetch_tasks,
@@ -365,6 +369,7 @@ def test_clean_up_endpoint_qualifying_tasks_with_flags(tmp_path):
         fetch_week_events=fetch_week_events,
         fetch_week_tasks=fetch_week_tasks,
         fetch_done_week_tasks=fetch_done_week_tasks,
+        fetch_floating_tasks=fetch_floating,
         reviews=store,
     )
     client = TestClient(app)
@@ -398,7 +403,7 @@ def test_clean_up_endpoint_degrades_when_fetch_fails(tmp_path):
     def fetch_week_tasks(start, end):
         raise RuntimeError("notion down")
 
-    fetch_week_events, _, fetch_done_week_tasks = week_fetchers()
+    fetch_week_events, _, fetch_done_week_tasks, fetch_floating = week_fetchers()
     app = create_app(
         fetch_events,
         fetch_tasks,
@@ -406,6 +411,7 @@ def test_clean_up_endpoint_degrades_when_fetch_fails(tmp_path):
         fetch_week_events=fetch_week_events,
         fetch_week_tasks=fetch_week_tasks,
         fetch_done_week_tasks=fetch_done_week_tasks,
+        fetch_floating_tasks=fetch_floating,
         reviews=store,
     )
     client = TestClient(app)
@@ -415,6 +421,8 @@ def test_clean_up_endpoint_degrades_when_fetch_fails(tmp_path):
     body = response.json()
     assert body["items"] == []
     assert body["statuses"] == [{"name": "Notion", "ok": False, "error": "notion down"}]
+    # The hygiene read degraded independently and is marked, not zeroed silently.
+    assert body["hygiene"] == []
 
 
 def test_clean_up_route_not_swallowed_by_review_id_route(review_app):
@@ -431,6 +439,146 @@ def test_clean_up_endpoint_normalizes_non_monday_week_start(look_back_app):
     response = client.get("/reviews/weekly/clean-up", params={"week_start": "2026-09-16"})
     assert response.status_code == 200
     assert response.json()["week_start"] == WEEK.isoformat()
+
+
+def test_clean_up_endpoint_returns_hygiene_rows(tmp_path):
+    from life_os.models.notion import Task
+
+    store = WeeklyReviewRepository(path=tmp_path / "var" / "life-os" / "weekly-reviews.json")
+
+    def fetch_events(day):
+        return []
+
+    def fetch_tasks(day):
+        return TaskFetchResult(tasks=[])
+
+    def update_task(task_id, update, done):
+        return True
+
+    def fetch_week_tasks(start, end):
+        return TaskFetchResult(tasks=[])
+
+    def fetch_floating_tasks():
+        # A due-only task is not floating; the service filters it out.
+        return TaskFetchResult(
+            tasks=[
+                Task(
+                    id="t1",
+                    name="Idea",
+                    project_id="p1",
+                    project_name="Corporate Finance",
+                ),
+                Task(id="t2", name="Has deadline", due=date(2026, 9, 30)),
+            ]
+        )
+
+    fetch_week_events, _, fetch_done_week_tasks, _ = week_fetchers()
+    app = create_app(
+        fetch_events,
+        fetch_tasks,
+        update_task,
+        fetch_week_events=fetch_week_events,
+        fetch_week_tasks=fetch_week_tasks,
+        fetch_done_week_tasks=fetch_done_week_tasks,
+        fetch_floating_tasks=fetch_floating_tasks,
+        reviews=store,
+    )
+    client = TestClient(app)
+
+    response = client.get("/reviews/weekly/clean-up", params={"week_start": WEEK.isoformat()})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["hygiene"] == [
+        {
+            "id": "t1",
+            "name": "Idea",
+            "project_id": "p1",
+            "project_name": "Corporate Finance",
+        }
+    ]
+    assert body["statuses"] == []
+
+
+def test_clean_up_endpoint_degrades_hygiene_independently(tmp_path):
+    from life_os.models.notion import Task
+
+    store = WeeklyReviewRepository(path=tmp_path / "var" / "life-os" / "weekly-reviews.json")
+
+    def fetch_events(day):
+        return []
+
+    def fetch_tasks(day):
+        return TaskFetchResult(tasks=[])
+
+    def update_task(task_id, update, done):
+        return True
+
+    def fetch_week_tasks(start, end):
+        return TaskFetchResult(
+            tasks=[Task(id="t1", name="Overdue", due=date(2026, 9, 10))]
+        )
+
+    def fetch_floating_tasks():
+        raise RuntimeError("notion down")
+
+    fetch_week_events, _, fetch_done_week_tasks, _ = week_fetchers()
+    app = create_app(
+        fetch_events,
+        fetch_tasks,
+        update_task,
+        fetch_week_events=fetch_week_events,
+        fetch_week_tasks=fetch_week_tasks,
+        fetch_done_week_tasks=fetch_done_week_tasks,
+        fetch_floating_tasks=fetch_floating_tasks,
+        reviews=store,
+    )
+    client = TestClient(app)
+
+    response = client.get("/reviews/weekly/clean-up", params={"week_start": WEEK.isoformat()})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["hygiene"] == []
+    assert body["statuses"] == [{"name": "Notion hygiene", "ok": False, "error": "notion down"}]
+    # The unresolved queue is unaffected by the hygiene read's failure.
+    assert [item["name"] for item in body["items"]] == ["Overdue"]
+
+
+def test_clean_up_endpoint_marks_unconfigured_hygiene(tmp_path):
+    store = WeeklyReviewRepository(path=tmp_path / "var" / "life-os" / "weekly-reviews.json")
+
+    def fetch_events(day):
+        return []
+
+    def fetch_tasks(day):
+        return TaskFetchResult(tasks=[])
+
+    def update_task(task_id, update, done):
+        return True
+
+    fetch_week_events, fetch_week_tasks, fetch_done_week_tasks, _ = week_fetchers()
+    app = create_app(
+        fetch_events,
+        fetch_tasks,
+        update_task,
+        fetch_week_events=fetch_week_events,
+        fetch_week_tasks=fetch_week_tasks,
+        fetch_done_week_tasks=fetch_done_week_tasks,
+        # No fetch_floating_tasks: not configured is explicit, not fake-empty.
+        reviews=store,
+    )
+    client = TestClient(app)
+
+    response = client.get("/reviews/weekly/clean-up", params={"week_start": WEEK.isoformat()})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["hygiene"] == []
+    assert body["statuses"] == [
+        {
+            "name": "Notion hygiene",
+            "ok": False,
+            "error": "The hygiene queue is not configured on this service.",
+        }
+    ]
 
 
 @pytest.fixture
@@ -534,7 +682,7 @@ def test_ahead_endpoint_unconfigured_studies_status(tmp_path):
     def update_task(task_id, update, done):
         return True
 
-    fetch_week_events, fetch_week_tasks, _ = week_fetchers()
+    fetch_week_events, fetch_week_tasks, _, _ = week_fetchers()
     app = create_app(
         fetch_events,
         fetch_tasks,

@@ -67,14 +67,16 @@ class TaskUpdate(BaseModel):
     """What an edit request means to change; Notion remains authoritative.
 
     Omitted keys preserve the Notion value; an explicit null clears the
-    date. Name and Done cannot be null: there is no clear semantics for
-    them, so an explicit null is rejected rather than silently dropped.
+    date or the project link. Name and Done cannot be null: there is no
+    clear semantics for them, so an explicit null is rejected rather than
+    silently dropped.
     """
 
     done: bool | None = None
     name: str | None = None
     scheduled: date | None = None
     due: date | None = None
+    project_id: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -96,6 +98,7 @@ class TaskUpdate(BaseModel):
             name=self.name if "name" in self.model_fields_set else UNSET,
             scheduled=self.scheduled if "scheduled" in self.model_fields_set else UNSET,
             due=self.due if "due" in self.model_fields_set else UNSET,
+            project_id=self.project_id if "project_id" in self.model_fields_set else UNSET,
         )
 
 
@@ -412,6 +415,7 @@ def create_app(
     fetch_week_events: Callable[[date, date], list[CalendarEvent]] | None = None,
     fetch_week_tasks: Callable[[date, date], TaskFetchResult] | None = None,
     fetch_done_week_tasks: Callable[[date, date], TaskFetchResult] | None = None,
+    fetch_floating_tasks: Callable[[], TaskFetchResult] | None = None,
     get_finance: Callable[[str], FinanceReview] | None = None,
     fetch_studies: Callable[[], DomainStudiesOverview] | None = None,
     fetch_studies_range: Callable[[date, date], DomainStudiesOverview] | None = None,
@@ -422,6 +426,7 @@ def create_app(
     update_goal: Callable[[str, DomainGoalUpdate], bool] | None = None,
     create_project: Callable[[ProjectCreate], dict] | None = None,
     update_project: Callable[[str, DomainProjectUpdate], bool] | None = None,
+    fetch_assignable_projects: Callable[[], list] | None = None,
     fetch_active_goal_pages: Callable[[], list[dict]] | None = None,
     resolve_projects: Callable[[list[str]], tuple] | None = None,
     reviews: WeeklyReviewRepository | None = None,
@@ -470,7 +475,12 @@ def create_app(
                 )
             try:
                 monday = normalize_week_start(week_start)
-                return get_clean_up(monday, monday + timedelta(days=6), fetch_week_tasks)
+                return get_clean_up(
+                    monday,
+                    monday + timedelta(days=6),
+                    fetch_week_tasks,
+                    fetch_floating_tasks,
+                )
             except (HTTPError, RequestException, ValueError) as error:
                 raise HTTPException(
                     status_code=502,
@@ -667,6 +677,29 @@ def create_app(
                 status_code=502, detail="Notion could not be reached. Try again."
             ) from error
         return {"task": task_id, "updated": True}
+
+    # /projects/assignable registers before /projects/{project_id}:
+    # Starlette matches in registration order, so the path param would
+    # otherwise swallow the literal segment (route-ordering test covers
+    # this). It always registers so the picker gets an explicit 501 rather
+    # than a 404 when unconfigured.
+    @app.get("/projects/assignable")
+    def assignable_projects_endpoint() -> list:
+        if fetch_assignable_projects is None:
+            raise HTTPException(
+                status_code=501,
+                detail="Assignable projects are not configured on this service.",
+            )
+        try:
+            return fetch_assignable_projects()
+        except Exception as error:
+            # The picker degrades to a neutral hint upstream rather than
+            # blocking; a raised error here means the whole read failed
+            # unexpectedly.
+            raise HTTPException(
+                status_code=502,
+                detail=f"The assignable projects could not be read: {error}",
+            ) from error
 
     # The project read always registers so the path exists alongside the
     # unconditional PATCH /projects/{id} write route (a GET against a

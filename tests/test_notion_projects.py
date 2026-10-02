@@ -102,3 +102,49 @@ def test_fetch_tasks_for_project_failure_raises(monkeypatch):
         pass
     else:
         raise AssertionError("expected RequestException")
+
+
+def test_fetch_assignable_projects_filters_active_or_planned_and_dedupes(monkeypatch):
+    from copy import deepcopy
+
+    bodies = []
+
+    def project_page(project_id: str, name: str):
+        return {
+            "id": project_id,
+            "properties": {
+                "Name": {"type": "title", "title": [{"plain_text": name}]},
+            },
+        }
+
+    def post(**kwargs):
+        bodies.append(deepcopy(kwargs["json"]))
+        return FakeResponse(
+            {
+                # A repeated id never produces a duplicate picker entry.
+                "results": [
+                    project_page("p1", "Corporate Finance"),
+                    project_page("p2", "Life OS"),
+                    project_page("p1", "Corporate Finance"),
+                ],
+                "has_more": False,
+            }
+        )
+
+    monkeypatch.setattr(notion_projects.requests, "post", post)
+
+    projects = notion_projects.fetch_assignable_projects(
+        token="secret", data_source_id="projects", page_size=100
+    )
+
+    # Status has no "in" operator, so the two options combine as one OR.
+    assert bodies[0]["filter"] == {
+        "or": [
+            {"property": "Status", "status": {"equals": "Active"}},
+            {"property": "Status", "status": {"equals": "Planned"}},
+        ]
+    }
+    assert [(p.id, p.name) for p in projects] == [
+        ("p1", "Corporate Finance"),
+        ("p2", "Life OS"),
+    ]

@@ -86,6 +86,46 @@ def fetch_tasks_for_project(
     return TaskFetchResult(tasks=list(tasks.values()), warnings=[])
 
 
+def fetch_assignable_projects(token: str, data_source_id: str, page_size: int) -> list[Task]:
+    """Fetch projects whose Status makes them assignable to tasks (#29).
+
+    Assignable = Active or Planned (docs/notion-tasks-schema.md); the
+    picker serves forward-looking planning, so Waiting/Dropped/Done are
+    excluded. Notion status filters have no "in" operator, so the two
+    options combine as a single-level OR. Read-only, returning lightweight
+    Task-shaped entries (id + name). Bounded by page_size pagination.
+    """
+
+    body = {
+        "filter": {
+            "or": [
+                {"property": "Status", "status": {"equals": "Active"}},
+                {"property": "Status", "status": {"equals": "Planned"}},
+            ]
+        },
+        "page_size": page_size,
+    }
+    projects: dict[str, Task] = {}
+    while True:
+        res = requests.post(
+            url=f"{NOTION_API_URL}/data_sources/{data_source_id}/query",
+            headers=_headers(token),
+            json=body,
+        )
+        res.raise_for_status()
+        data = res.json()
+        for page in data["results"]:
+            props = page["properties"]
+            name = "".join(
+                part.get("plain_text", "") for part in props.get("Name", {}).get("title", [])
+            )
+            projects.setdefault(page["id"], Task(id=page["id"], name=name))
+        if not data["has_more"]:
+            break
+        body["start_cursor"] = data["next_cursor"]
+    return list(projects.values())
+
+
 def _current_goal_id(token: str, project_id: str) -> str | None:
     """Read a project page's current project-side Goal relation id."""
 
