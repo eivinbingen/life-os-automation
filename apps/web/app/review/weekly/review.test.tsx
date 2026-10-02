@@ -780,6 +780,20 @@ describe("Clean Up queue", () => {
     expect(within(dialog).getByRole("option", { name: "Life OS" })).toBeTruthy();
     expect(within(dialog).queryByText("project-os")).toBeNull();
   });
+
+  it("keeps the dialog open when the browser fires a close event", async () => {
+    // The unmount cleanup calls close(), which fires a close event; an
+    // onClose handler on the dialog would turn that into an instant
+    // unmount right after mount (twice over under StrictMode).
+    const user = userEvent.setup();
+    await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: hygieneItems } });
+
+    await user.click(screen.getAllByText("Process")[0]);
+    const dialog = screen.getByRole("dialog", { name: "Process task" });
+    fireEvent(dialog, new Event("close"));
+
+    expect(screen.getByRole("dialog", { name: "Process task" })).toBeTruthy();
+  });
 });
 
 describe("Direction stage", () => {

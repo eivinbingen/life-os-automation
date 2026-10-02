@@ -856,7 +856,14 @@ function CleanUpRescheduleDialog({
     <dialog
       ref={dialogRef}
       className="capture-dialog"
-      onClose={onClose}
+      onCancel={(event) => {
+        // Escape closes through React like the Cancel button, never
+        // natively: the unmount cleanup calls close(), which fires a
+        // close event, so an onClose handler here would unmount the
+        // dialog right after it mounted.
+        event.preventDefault();
+        onClose();
+      }}
       aria-label="Reschedule task"
     >
       <h3>Reschedule</h3>
@@ -945,7 +952,20 @@ function HygieneProcessDialog({
   }
 
   return (
-    <dialog ref={dialogRef} className="capture-dialog" onClose={onClose} aria-label="Process task">
+    <dialog
+      ref={dialogRef}
+      className="capture-dialog"
+      onCancel={(event) => {
+        // Escape closes through React like the Cancel button, never
+        // natively: the unmount cleanup calls close(), which fires a
+        // close event, so an onClose handler here would unmount the
+        // dialog right after it mounted. Cancel is disabled while
+        // pending, so Escape matches it.
+        event.preventDefault();
+        if (!pending) onClose();
+      }}
+      aria-label="Process task"
+    >
       <h3>Process task</h3>
       <p className="review-dates-inline">
         {item.name} has no scheduled or due date. Fields left empty stay as they are.
