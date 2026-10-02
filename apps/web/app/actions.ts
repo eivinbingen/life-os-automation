@@ -71,12 +71,14 @@ export type UpdateTaskResult =
   | { ok: true }
   | { ok: false; error: string };
 
-/** The task fields an edit panel can deliberately change. */
+/** The task fields an edit panel can deliberately change. A project_id
+ * of null clears the relation; omitted keys preserve the Notion value. */
 export type TaskEdits = {
   name?: string;
   scheduled?: string | null;
   due?: string | null;
   done?: boolean;
+  project_id?: string | null;
 };
 
 export async function updateTask(
@@ -96,6 +98,7 @@ export async function updateTask(
   if (edits.scheduled !== undefined) body.scheduled = edits.scheduled;
   if (edits.due !== undefined) body.due = edits.due;
   if (edits.done !== undefined) body.done = edits.done;
+  if (edits.project_id !== undefined) body.project_id = edits.project_id;
 
   try {
     const response = await fetch(`${apiUrl}/tasks/${encodeURIComponent(taskId)}`, {

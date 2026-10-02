@@ -347,6 +347,11 @@ body { margin: 0; min-height: 100vh; background: var(--paper); color: var(--ink)
 .review-field textarea { width: 100%; max-width: 640px; padding: 11px 13px; border: 1px solid #dce7df; border-radius: 9px; background: #fff; color: var(--ink); font: inherit; font-size: 14px; line-height: 1.55; resize: vertical; }
 .review-field textarea:focus-visible { outline: 2px solid #5c9a77; outline-offset: 1px; }
 .review-field textarea:disabled { background: #f5f7f4; color: #7b8b82; }
+/* Inputs and selects inside review dialogs (reschedule, hygiene process)
+ * and the ahead capture share the compact single-line control style. */
+.review-field input, .review-field select { height: 34px; padding: 0 10px; border: 1px solid #dce7df; border-radius: 8px; background: #fff; color: var(--ink); font: inherit; font-size: 13px; }
+.review-field input:focus-visible, .review-field select:focus-visible { outline: 2px solid #5c9a77; outline-offset: 1px; }
+.review-field input:disabled, .review-field select:disabled { background: #f5f7f4; color: #7b8b82; cursor: wait; }
 .review-saved-note { margin: -8px 0 18px; color: #547467; font-size: 12px; }
 .review-retry { height: 32px; padding: 0 13px; border: 1px solid #f0dfbf; border-radius: 7px; background: #fff; color: #855520; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 .review-dates-inline { margin: 0; color: #547467; font-size: 12px; }

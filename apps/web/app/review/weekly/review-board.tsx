@@ -18,6 +18,7 @@ import type {
   CleanUpSummary,
   DirectionGoal,
   DirectionSummary,
+  HygieneItem,
   LookBackSummary,
   ReviewRecord,
   SectionProgress,
@@ -48,6 +49,14 @@ let appActionsPromise: Promise<typeof import("../../actions")> | null = null;
 function loadAppActions() {
   appActionsPromise ??= import("../../actions");
   return appActionsPromise;
+}
+
+// Assignable-projects options for the hygiene picker come from the
+// projects module; cached for the same reason as the app actions.
+let projectsActionsPromise: Promise<typeof import("../../projects-actions")> | null = null;
+function loadProjectsActions() {
+  projectsActionsPromise ??= import("../../projects-actions");
+  return projectsActionsPromise;
 }
 
 const aheadTimeFormatter = new Intl.DateTimeFormat("en-GB", {
@@ -190,6 +199,12 @@ function CleanUpBody({
   const [backlogConfirmIds, setBacklogConfirmIds] = useState<Set<string>>(new Set());
   const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null);
   const [rescheduleId, setRescheduleId] = useState<string | null>(null);
+  const [processId, setProcessId] = useState<string | null>(null);
+  // null means the picker options have not been fetched yet; an empty list
+  // means they were fetched but could not be listed.
+  const [projectOptions, setProjectOptions] = useState<
+    { id: string; name: string | null }[] | null
+  >(null);
 
   if (!live || !live.ok) {
     return (
@@ -205,6 +220,7 @@ function CleanUpBody({
 
   const summary = live.summary;
   const failed = summary.statuses.filter((status) => !status.ok);
+  const hygieneFailed = failed.some((status) => status.name === "Notion hygiene");
 
   const runAction = async (id: string, edits: Record<string, unknown>) => {
     if (pendingIds.has(id)) return;
@@ -228,6 +244,44 @@ function CleanUpBody({
     }
   };
 
+  const runHygieneAction = async (
+    id: string,
+    edits: { scheduled?: string; due?: string; project_id?: string | null },
+  ) => {
+    if (pendingIds.has(id)) return;
+    setPendingIds((prev) => new Set([...prev, id]));
+    setActionError(null);
+    try {
+      const { updateTask } = await loadAppActions();
+      const result = await updateTask(id, edits);
+      if (result.ok) {
+        // The dialog's values are saved; the refetch refreshes membership
+        // in both queues.
+        setProcessId(null);
+        onActionDone();
+      } else {
+        setActionError({ id, message: result.error });
+      }
+    } catch {
+      setActionError({ id, message: "The task could not be updated. Try again." });
+    } finally {
+      setPendingIds((prev) => new Set([...prev].filter((x) => x !== id)));
+    }
+  };
+
+  function openProcess(item: HygieneItem) {
+    setActionError(null);
+    setProcessId(item.id);
+    // The picker options load once on first open and stay cached; a failed
+    // read degrades to an empty list and the dialog shows its hint.
+    if (projectOptions === null) {
+      loadProjectsActions()
+        .then(({ fetchAssignableProjects }) => fetchAssignableProjects())
+        .then((options) => setProjectOptions(options))
+        .catch(() => setProjectOptions([]));
+    }
+  }
+
   return (
     <div className="review-queue-wrap">
       <p className="review-dates-inline">
@@ -235,11 +289,11 @@ function CleanUpBody({
         <time dateTime={summary.local_day}>{formatItemDate(summary.local_day)}</time>
       </p>
 
-      {failed.length > 0 ? (
-        <SourceFailureAlert failed={failed} onRetry={onRetry} />
-      ) : summary.items.length === 0 ? (
-        <p className="review-queue-empty">Nothing unresolved in the reviewed week.</p>
-      ) : (
+      {/* The two queues degrade independently: a failed read shows the
+          shared alert while any successfully read rows stay visible. The
+          neutral empty state only appears when nothing failed. */}
+      {failed.length > 0 && <SourceFailureAlert failed={failed} onRetry={onRetry} />}
+      {summary.items.length > 0 ? (
         <ul className="review-queue">
           {summary.items.map((item) => (
             <li key={item.id} className="review-queue-row">
@@ -329,7 +383,9 @@ function CleanUpBody({
             </li>
           ))}
         </ul>
-      )}
+      ) : failed.length === 0 ? (
+        <p className="review-queue-empty">Nothing unresolved in the reviewed week.</p>
+      ) : null}
 
       {summary.warnings.length > 0 && (
         <div className="integration-alert" role="status">
@@ -341,9 +397,73 @@ function CleanUpBody({
       <div className="review-hygiene">
         <h3>System hygiene</h3>
         <p>
-          Needs Processing and missing-metadata review arrive in a later slice; not every
-          unassigned or unscheduled task is an error.
+          Incomplete tasks with neither a scheduled nor a due date have no time anchor.
+          Missing metadata alone is not an error; a standalone task can stay as it is.
         </p>
+        {hygieneFailed ? (
+          <p className="review-queue-empty">The hygiene queue could not be read.</p>
+        ) : summary.hygiene.length === 0 ? (
+          <p className="review-queue-empty">No floating tasks right now.</p>
+        ) : (
+          <ul className="review-queue">
+            {summary.hygiene.map((item) => (
+              <li key={item.id} className="review-queue-row">
+                <div className="review-queue-main">
+                  <span className="review-queue-name">{item.name}</span>
+                  {item.project_name && (
+                    <span className="review-queue-project">
+                      <span>Project</span>
+                      <TaskProjectLink
+                        projectId={item.project_id}
+                        projectName={item.project_name}
+                        openInNewTab
+                      />
+                    </span>
+                  )}
+                  <div className="review-queue-meta">
+                    <span className="review-reason-chip">No time anchor</span>
+                    <span>No scheduled or due date</span>
+                    {/* A set id with no name is an unknown lookup, not a
+                        missing project: the row says so instead of implying
+                        there is no project. */}
+                    {!item.project_name &&
+                      (item.project_id ? (
+                        <span>Project could not be loaded</span>
+                      ) : (
+                        <span>No project</span>
+                      ))}
+                  </div>
+                </div>
+                {!isCompleted && (
+                  <div className="review-queue-actions">
+                    <button
+                      type="button"
+                      className="review-queue-reschedule"
+                      disabled={pendingIds.has(item.id)}
+                      onClick={() => openProcess(item)}
+                    >
+                      Process
+                    </button>
+                  </div>
+                )}
+                {actionError?.id === item.id && (
+                  <p className="review-action-error" role="alert">
+                    {actionError.message}
+                  </p>
+                )}
+                {processId === item.id && (
+                  <HygieneProcessDialog
+                    item={item}
+                    projectOptions={projectOptions}
+                    pending={pendingIds.has(item.id)}
+                    onClose={() => setProcessId(null)}
+                    onSave={(edits) => void runHygieneAction(item.id, edits)}
+                  />
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
@@ -754,6 +874,115 @@ function CleanUpRescheduleDialog({
           {pending ? "Saving…" : "Save"}
         </button>
         <button type="button" className="review-queue-confirm-no" onClick={onClose}>
+          Cancel
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
+/** The hygiene row's contextual assignment: Scheduled, Due, and Project in
+ * one dialog with an explicit save. Only changed fields are written, so the
+ * PATCH preserves every other Notion property; a no-change save closes
+ * without a write. */
+function HygieneProcessDialog({
+  item,
+  projectOptions,
+  pending,
+  onClose,
+  onSave,
+}: {
+  item: HygieneItem;
+  projectOptions: { id: string; name: string | null }[] | null;
+  pending: boolean;
+  onClose: () => void;
+  onSave: (edits: {
+    scheduled?: string;
+    due?: string;
+    project_id?: string | null;
+  }) => void;
+}) {
+  // The predicate guarantees both dates are empty, so they seed empty.
+  const [scheduled, setScheduled] = useState("");
+  const [due, setDue] = useState("");
+  const [projectId, setProjectId] = useState(item.project_id ?? "");
+
+  // The seed project stays selectable even when the options read failed or
+  // the project is not Active/Planned (the ProjectForm precedent).
+  const options = [...(projectOptions ?? [])];
+  if (item.project_id && !options.some((option) => option.id === item.project_id)) {
+    options.unshift({ id: item.project_id, name: item.project_name });
+  }
+
+  function save() {
+    const edits: { scheduled?: string; due?: string; project_id?: string | null } = {};
+    if (scheduled) edits.scheduled = scheduled;
+    if (due) edits.due = due;
+    if (projectId !== (item.project_id ?? "")) edits.project_id = projectId || null;
+    if (edits.scheduled === undefined && edits.due === undefined && edits.project_id === undefined) {
+      onClose();
+      return;
+    }
+    onSave(edits);
+  }
+
+  return (
+    <dialog className="capture-dialog" open onClose={onClose} aria-label="Process task">
+      <h3>Process task</h3>
+      <p className="review-dates-inline">
+        {item.name} has no scheduled or due date. Fields left empty stay as they are.
+      </p>
+      <label className="review-field">
+        <span>Scheduled</span>
+        <input
+          type="date"
+          value={scheduled}
+          onChange={(event) => setScheduled(event.target.value)}
+          disabled={pending}
+        />
+      </label>
+      <label className="review-field">
+        <span>Due</span>
+        <input
+          type="date"
+          value={due}
+          onChange={(event) => setDue(event.target.value)}
+          disabled={pending}
+        />
+      </label>
+      <label className="review-field">
+        <span>Project</span>
+        <select
+          className="capture-name task-edit-name"
+          value={projectId}
+          onChange={(event) => setProjectId(event.target.value)}
+          disabled={pending || projectOptions === null}
+        >
+          <option value="">No project</option>
+          {options.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.name ?? option.id}
+            </option>
+          ))}
+        </select>
+      </label>
+      {projectOptions === null ? (
+        <p className="capture-hint">Loading projects…</p>
+      ) : options.length === 0 ? (
+        <p className="capture-hint">
+          Assignable projects could not be listed; the link can be set later.
+        </p>
+      ) : null}
+      <div className="review-queue-actions">
+        <button type="button" className="review-queue-complete" disabled={pending} onClick={save}>
+          {pending ? "Saving…" : "Save"}
+        </button>
+        <button
+          type="button"
+          className="review-queue-confirm-no"
+          disabled={pending}
+          onClick={onClose}
+        >
           Cancel
         </button>
       </div>

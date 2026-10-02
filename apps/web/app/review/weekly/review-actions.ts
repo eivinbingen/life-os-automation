@@ -226,6 +226,13 @@ export type CleanUpItem = {
   scheduled_in_week: boolean;
 };
 
+export type HygieneItem = {
+  id: string;
+  name: string;
+  project_id: string | null;
+  project_name: string | null;
+};
+
 export type CleanUpSummary = {
   week_start: string;
   week_end: string;
@@ -233,6 +240,7 @@ export type CleanUpSummary = {
   timezone: string;
   captured_at: string;
   items: CleanUpItem[];
+  hygiene: HygieneItem[];
   statuses: { name: string; ok: boolean; error: string | null }[];
   warnings: string[];
 };

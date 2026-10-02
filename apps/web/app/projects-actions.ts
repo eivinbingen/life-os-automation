@@ -111,3 +111,27 @@ export async function updateProject(
   const saved = result.data as { goal_link_error?: string };
   return { ok: true, goalLinkError: saved.goal_link_error };
 }
+
+export type AssignableProject = { id: string; name: string | null };
+
+/** Active/Planned projects for the hygiene queue's assignment picker.
+ * A failed or unconfigured read returns an empty list: the picker renders
+ * with its neutral "not listed" hint instead of blocking the dialog. */
+export async function fetchAssignableProjects(): Promise<AssignableProject[]> {
+  const base = process.env.LIFE_OS_API_URL ?? null;
+  if (!base) return [];
+  try {
+    const response = await fetch(`${base}/projects/assignable`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) return [];
+    const data = (await response.json()) as { id?: string; name?: string }[];
+    if (!Array.isArray(data)) return [];
+    return data
+      .filter((project) => typeof project.id === "string")
+      .map((project) => ({ id: project.id as string, name: project.name ?? null }));
+  } catch {
+    return [];
+  }
+}
