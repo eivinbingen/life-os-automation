@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time
 from zoneinfo import ZoneInfo
 
@@ -230,22 +231,35 @@ def get_ahead(
     statuses: list[dict] = []
     warnings: list[str] = []
 
+    # The three source reads are independent multi-paginated upstream
+    # calls; running them concurrently lands the whole summary in the
+    # slowest read's time instead of their sum.
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        events_future = pool.submit(fetch_events, ahead_start, ahead_end)
+        tasks_future = pool.submit(fetch_tasks, ahead_start, ahead_end)
+        studies_future = (
+            pool.submit(fetch_studies_range, ahead_start, ahead_end)
+            if fetch_studies_range is not None
+            else None
+        )
+
+    studies: StudiesOverview | None = None
+
     try:
-        events = fetch_events(ahead_start, ahead_end)
+        events = events_future.result()
     except Exception as error:
         events = []
         statuses.append({"name": "Calendar", "ok": False, "error": str(error)})
 
     try:
-        result = fetch_tasks(ahead_start, ahead_end)
+        result = tasks_future.result()
         tasks = result.tasks
         warnings.extend(result.warnings)
     except Exception as error:
         tasks = []
         statuses.append({"name": "Notion", "ok": False, "error": str(error)})
 
-    studies: StudiesOverview | None = None
-    if fetch_studies_range is None:
+    if studies_future is None:
         statuses.append(
             {
                 "name": "Studies",
@@ -255,7 +269,7 @@ def get_ahead(
         )
     else:
         try:
-            overview = fetch_studies_range(ahead_start, ahead_end)
+            overview = studies_future.result()
             studies = overview
             warnings.extend(overview.warnings)
             secondary = [s for s in overview.statuses if not s.ok]

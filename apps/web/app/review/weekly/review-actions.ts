@@ -356,12 +356,15 @@ export async function fetchAhead(
   if (!base) {
     return { ok: false, error: "The connection to the local Life OS service is not configured." };
   }
+  // The ahead read spans Calendar, a paginated Notion task query, and
+  // Studies; like other multi-source reads it can exceed short budgets.
+  const signal = AbortSignal.timeout(30_000);
   try {
     const response = await fetch(
       `${base}/reviews/weekly/ahead?week_start=${encodeURIComponent(weekStart)}`,
       {
         cache: "no-store",
-        signal: AbortSignal.timeout(10_000),
+        signal,
       },
     );
     if (!response.ok) {
@@ -369,9 +372,14 @@ export async function fetchAhead(
     }
     return { ok: true, summary: (await response.json()) as AheadSummary };
   } catch {
-    return {
-      ok: false,
-      error: "The Life OS service could not be reached. Check that it is running, then try again.",
-    };
+    return signal.aborted
+      ? {
+          ok: false,
+          error: "Loading the ahead timeline took too long. Calendar, task, or studies data may be slow; please try again.",
+        }
+      : {
+          ok: false,
+          error: "The Life OS service could not be reached. Check that it is running, then try again.",
+        };
   }
 }

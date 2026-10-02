@@ -236,17 +236,7 @@ function CleanUpBody({
       </p>
 
       {failed.length > 0 ? (
-        <div className="integration-alert" role="status">
-          <span className="alert-symbol" aria-hidden="true">!</span>
-          <span>
-            {failed.map((status) => status.name).join(" and ")}{" "}
-            {failed.length === 1 ? "is" : "are"} unavailable. Some information may be
-            missing.
-          </span>
-          <button type="button" className="review-retry" onClick={onRetry}>
-            Try again
-          </button>
-        </div>
+        <SourceFailureAlert failed={failed} onRetry={onRetry} />
       ) : summary.items.length === 0 ? (
         <p className="review-queue-empty">Nothing unresolved in the reviewed week.</p>
       ) : (
@@ -429,17 +419,7 @@ function DirectionBody({
   return (
     <div className="review-queue-wrap">
       {failed.length > 0 ? (
-        <div className="integration-alert" role="status">
-          <span className="alert-symbol" aria-hidden="true">!</span>
-          <span>
-            {failed.map((status) => status.name).join(" and ")}{" "}
-            {failed.length === 1 ? "is" : "are"} unavailable. Some information may be
-            missing.
-          </span>
-          <button type="button" className="review-retry" onClick={onRetry}>
-            Try again
-          </button>
-        </div>
+        <SourceFailureAlert failed={failed} onRetry={onRetry} />
       ) : summary.items.length === 0 ? (
         <p className="review-queue-empty">No active goals right now.</p>
       ) : (
@@ -703,6 +683,30 @@ function AddGoalDialog({
   );
 }
 
+/** Shared degraded-source banner: names the failed sources and offers the
+ * in-place retry; the queue or timeline below it is unaffected. */
+function SourceFailureAlert({
+  failed,
+  onRetry,
+}: {
+  failed: { name: string; error: string | null }[];
+  onRetry: () => void;
+}) {
+  return (
+    <div className="integration-alert" role="status">
+      <span className="alert-symbol" aria-hidden="true">!</span>
+      <span>
+        {failed.map((status) => status.name).join(" and ")}{" "}
+        {failed.length === 1 ? "is" : "are"} unavailable. Some information may be
+        missing.
+      </span>
+      <button type="button" className="review-retry" onClick={onRetry}>
+        Try again
+      </button>
+    </div>
+  );
+}
+
 function CleanUpRescheduleDialog({
   item,
   pending,
@@ -762,6 +766,15 @@ function CleanUpRescheduleDialog({
 function aheadEventMeta(item: AheadItem): string {
   if (item.all_day) return "All day";
   if (!item.start) return "";
+  if (item.continues) {
+    // The start belongs to an earlier day, so a range would read as a
+    // same-day time that is wrong here; the Ongoing chip carries the
+    // meaning and only the remaining time is labeled.
+    if (!item.end) return "";
+    return item.end.slice(0, 10) === item.day
+      ? `until ${aheadTimeFormatter.format(new Date(item.end))}`
+      : `until ${formatItemDate(item.end)}`;
+  }
   const start = aheadTimeFormatter.format(new Date(item.start));
   if (!item.end) return start;
   if (item.end.slice(0, 10) === item.day) {
@@ -854,7 +867,11 @@ function AheadBody({
 
   function closeCapture() {
     if (capturePending) return;
+    // Matches the success path: nothing typed into a cancelled capture
+    // resurfaces the next time it is opened.
     setCaptureOpen(false);
+    setCaptureName("");
+    setCaptureDue("");
     setCaptureError(null);
   }
 
@@ -960,17 +977,7 @@ function AheadBody({
         </form>
       )}
       {failed.length > 0 ? (
-        <div className="integration-alert" role="status">
-          <span className="alert-symbol" aria-hidden="true">!</span>
-          <span>
-            {failed.map((status) => status.name).join(" and ")}{" "}
-            {failed.length === 1 ? "is" : "are"} unavailable. Some information may be
-            missing.
-          </span>
-          <button type="button" className="review-retry" onClick={onRetry}>
-            Try again
-          </button>
-        </div>
+        <SourceFailureAlert failed={failed} onRetry={onRetry} />
       ) : null}
       {failed.length === 0 && days.length === 0 ? (
         <p className="review-queue-empty">
@@ -1366,14 +1373,24 @@ export function ReviewBoard({
   // same server action so a transient failure is recoverable in place.
   const [liveCleanUp, setLiveCleanUp] = useState(cleanUp ?? null);
   const [retryingCleanUp, setRetryingCleanUp] = useState(false);
+  const cleanUpRefreshQueued = useRef(false);
   const retryCleanUp = useCallback(async () => {
-    if (retryingCleanUp) return;
+    if (retryingCleanUp) {
+      // An action finished while a refetch was in flight; remember it so
+      // its result is not lost to the in-flight guard.
+      cleanUpRefreshQueued.current = true;
+      return;
+    }
     setRetryingCleanUp(true);
     try {
       const { fetchCleanUp } = await loadReviewActions();
       setLiveCleanUp(await fetchCleanUp(review.week_start));
     } finally {
       setRetryingCleanUp(false);
+      if (cleanUpRefreshQueued.current) {
+        cleanUpRefreshQueued.current = false;
+        void retryCleanUp();
+      }
     }
   }, [retryingCleanUp, review.week_start]);
 
@@ -1381,14 +1398,24 @@ export function ReviewBoard({
   // the same server action so a transient failure is recoverable in place.
   const [liveDirection, setLiveDirection] = useState(direction ?? null);
   const [retryingDirection, setRetryingDirection] = useState(false);
+  const directionRefreshQueued = useRef(false);
   const retryDirection = useCallback(async () => {
-    if (retryingDirection) return;
+    if (retryingDirection) {
+      // An action finished while a refetch was in flight; remember it so
+      // its result is not lost to the in-flight guard.
+      directionRefreshQueued.current = true;
+      return;
+    }
     setRetryingDirection(true);
     try {
       const { fetchDirection } = await loadReviewActions();
       setLiveDirection(await fetchDirection(review.week_start));
     } finally {
       setRetryingDirection(false);
+      if (directionRefreshQueued.current) {
+        directionRefreshQueued.current = false;
+        void retryDirection();
+      }
     }
   }, [retryingDirection, review.week_start]);
 
@@ -1396,14 +1423,24 @@ export function ReviewBoard({
   // same server action so a transient failure is recoverable in place.
   const [liveAhead, setLiveAhead] = useState(ahead ?? null);
   const [retryingAhead, setRetryingAhead] = useState(false);
+  const aheadRefreshQueued = useRef(false);
   const retryAhead = useCallback(async () => {
-    if (retryingAhead) return;
+    if (retryingAhead) {
+      // An action finished while a refetch was in flight; remember it so
+      // its result is not lost to the in-flight guard.
+      aheadRefreshQueued.current = true;
+      return;
+    }
     setRetryingAhead(true);
     try {
       const { fetchAhead } = await loadReviewActions();
       setLiveAhead(await fetchAhead(review.week_start));
     } finally {
       setRetryingAhead(false);
+      if (aheadRefreshQueued.current) {
+        aheadRefreshQueued.current = false;
+        void retryAhead();
+      }
     }
   }, [retryingAhead, review.week_start]);
 

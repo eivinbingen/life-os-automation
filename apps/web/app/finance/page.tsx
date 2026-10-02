@@ -36,7 +36,7 @@ export default async function FinancePage({
             <p>
               Requested month <time dateTime={selectedMonth}>{formatMonth(selectedMonth)}</time>
             </p>
-            <a className="retry-button weekly-retry-link" href={`/finance?month=${selectedMonth}`}>
+            <a className="retry-button page-retry-link" href={`/finance?month=${selectedMonth}`}>
               Try again
             </a>
           </section>

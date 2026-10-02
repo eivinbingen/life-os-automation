@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -995,6 +995,66 @@ describe("Ahead stage", () => {
     expect(screen.getByText("Ongoing")).toBeTruthy();
   });
 
+  it("labels a continued event with its remaining time, never a wrong same-day range", async () => {
+    // Chronological order matters: the grouping walks items in sequence.
+    const [conference, standup, slidesScheduled, slidesDue, exam] = aheadSummary.items;
+    const nightShift = {
+      // Started 23:00 the previous evening and ends 01:00 on this day; a
+      // "23:00–01:00" range would read as a same-day slot that never exists.
+      id: "event:e3:2026-09-23",
+      kind: "event" as const,
+      day: "2026-09-23",
+      name: "Night shift",
+      when: "2026-09-22T23:00:00+02:00",
+      task_id: null,
+      project_id: null,
+      project_name: null,
+      course_id: null,
+      course_name: null,
+      scheduled: null,
+      due: null,
+      event_id: "e3",
+      start: "2026-09-22T23:00:00+02:00",
+      end: "2026-09-23T01:00:00+02:00",
+      all_day: false,
+      continues: true,
+    };
+    const retreat = {
+      // Spans several days; on a middle day only the end is worth labeling.
+      id: "event:e4:2026-09-24",
+      kind: "event" as const,
+      day: "2026-09-24",
+      name: "Team retreat",
+      when: "2026-09-23T09:00:00+02:00",
+      task_id: null,
+      project_id: null,
+      project_name: null,
+      course_id: null,
+      course_name: null,
+      scheduled: null,
+      due: null,
+      event_id: "e4",
+      start: "2026-09-23T09:00:00+02:00",
+      end: "2026-09-25T17:00:00+02:00",
+      all_day: false,
+      continues: true,
+    };
+    await renderAheadBoard({
+      ok: true,
+      summary: {
+        ...aheadSummary,
+        items: [conference, standup, slidesScheduled, nightShift, slidesDue, retreat, exam],
+      },
+    });
+
+    const nightShiftRow = screen.getByText("Night shift").closest(".review-queue-row");
+    expect(nightShiftRow?.textContent).toContain("until 01:00");
+    expect(nightShiftRow?.textContent).not.toContain("23:00–01:00");
+
+    const retreatRow = screen.getByText("Team retreat").closest(".review-queue-row");
+    expect(retreatRow?.textContent).toContain("until 25 Sept");
+  });
+
   it("cross-references the other date on scheduled and due rows", async () => {
     const { container } = await renderAheadBoard();
 
@@ -1142,6 +1202,24 @@ describe("Ahead stage", () => {
     expect((screen.getByLabelText("Task name") as HTMLInputElement).value).toBe("Book dentist");
   });
 
+  it("clears a cancelled capture so reopening starts fresh", async () => {
+    const { user } = await renderAheadBoard();
+
+    await user.click(screen.getByText("+ Add task"));
+    await user.type(screen.getByLabelText("Task name"), "Book dentist");
+    fireEvent.change(screen.getByLabelText("Due"), { target: { value: "2026-09-25" } });
+    await user.click(screen.getByText("Cancel"));
+
+    // The form closes and nothing typed into the cancelled capture resurfaces.
+    expect(screen.queryByLabelText("Task name")).toBeNull();
+
+    await user.click(screen.getByText("+ Add task"));
+    expect((screen.getByLabelText("Task name") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Due") as HTMLInputElement).value).toBe("");
+    // Scheduled is reseeded with the ahead week's first day, not a stale draft.
+    expect((screen.getByLabelText("Scheduled") as HTMLInputElement).value).toBe("2026-09-21");
+  });
+
   it("completes a task from the timeline and refreshes", async () => {
     const { user } = await renderAheadBoard();
 
@@ -1152,6 +1230,39 @@ describe("Ahead stage", () => {
     });
     await waitFor(() => {
       expect(fetchAheadAction).toHaveBeenCalledWith("2026-09-14");
+    });
+  });
+
+  it("queues a refetch triggered while one is in flight instead of dropping it", async () => {
+    // The refetch hangs until released, so the second completion lands while
+    // the first refresh is still pending.
+    let resolveFetch: (value: { ok: true; summary: AheadSummary }) => void = () => {};
+    fetchAheadAction.mockImplementation(
+      () =>
+        new Promise<{ ok: true; summary: AheadSummary }>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const { user } = await renderAheadBoard();
+
+    // Complete buttons in DOM order: the t1 timeline rows first, then the
+    // t2 planning exception — two different tasks, so neither is blocked.
+    await user.click(screen.getAllByText("Complete")[0]);
+    await user.click(screen.getAllByText("Complete")[2]);
+
+    // The first completion refetched; the second must not have started a
+    // parallel fetch — it is queued behind the in-flight one.
+    await waitFor(() => {
+      expect(fetchAheadAction).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      resolveFetch({ ok: true, summary: aheadSummary });
+    });
+
+    // The queued follow-up now runs, so both completions are reflected.
+    await waitFor(() => {
+      expect(fetchAheadAction).toHaveBeenCalledTimes(2);
     });
   });
 
