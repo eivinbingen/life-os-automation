@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -843,11 +843,19 @@ function CleanUpRescheduleDialog({
   const [value, setValue] = useState(initial);
   const hadTime = Boolean(item.scheduled?.includes("T"));
 
+  // showModal() centers the dialog as a real modal with a backdrop; the
+  // open attribute alone would render it inline in the queue row.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
+
   return (
     <dialog
       ref={dialogRef}
       className="capture-dialog"
-      open
       onClose={onClose}
       aria-label="Reschedule task"
     >
@@ -906,6 +914,16 @@ function HygieneProcessDialog({
   const [scheduled, setScheduled] = useState("");
   const [due, setDue] = useState("");
   const [projectId, setProjectId] = useState(item.project_id ?? "");
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  // showModal() centers the dialog as a real modal with a backdrop; the
+  // open attribute alone would render it inline in the queue row.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
 
   // The seed project stays selectable even when the options read failed or
   // the project is not Active/Planned (the ProjectForm precedent).
@@ -927,7 +945,7 @@ function HygieneProcessDialog({
   }
 
   return (
-    <dialog className="capture-dialog" open onClose={onClose} aria-label="Process task">
+    <dialog ref={dialogRef} className="capture-dialog" onClose={onClose} aria-label="Process task">
       <h3>Process task</h3>
       <p className="review-dates-inline">
         {item.name} has no scheduled or due date. Fields left empty stay as they are.
