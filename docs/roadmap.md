@@ -16,22 +16,20 @@ Some project creation/editing infrastructure is already wired on main even thoug
 #45 remains open. Verify the issue's full user-facing acceptance criteria before
 calling that slice complete or implementing a duplicate.
 
-## Current gaps
+## Current readiness
 
-- [#29](https://github.com/eivinbingen/life-os-automation/issues/29): Weekly Review
-  metadata hygiene; implementation is in separate PR #66, not yet merged at this audit.
-- [#19](https://github.com/eivinbingen/life-os-automation/issues/19): active goals on Today.
-- [#20](https://github.com/eivinbingen/life-os-automation/issues/20): selected-day task activity per goal.
-
-Finish these before native migration implementation. Source-schema rules remain
-Notion-backed until cutover. Do not assume a closed planning issue proves every
-related user-facing feature is delivered.
+[#29](https://github.com/eivinbingen/life-os-automation/issues/29) metadata hygiene
+is merged in PR #66. Today #19 (active goals) and #20 (selected-day goal activity)
+remain useful enhancements but are not migration blockers; deliver them against
+native relationships after the backend integration. Notion remains authoritative
+until explicit cutover.
 
 ## Next: native backend
 
 [Milestone 8](https://github.com/eivinbingen/life-os-automation/milestone/8):
 
-1. #60: collaboratively agree native data model, inventory and migration contract.
+1. #60: model/architecture design agreed; source/code inventory complete. Exact
+   import and operational mechanics are owned by #62/#64.
 2. #61: Eivin builds the SQLite/SQLAlchemy/Alembic foundation with coaching.
 3. #62: staged selective import and reconciliation.
 4. #63: current workflows on native repositories. This and #62 can overlap once
@@ -41,9 +39,10 @@ related user-facing feature is delivered.
 7. #47: contextual project/course task capture and direct task-goal links.
 
 #65 plans mobile access alongside design and audits the native API after #63;
-remote deployment is later. #60 design is in progress, not a completed contract.
-The stack and relationship decisions are recorded there; no database implementation
-has started in this documentation slice.
+remote deployment is later. #60 records the agreed design; the
+[source inventory and handoff](native-migration-inventory.md) names remaining
+implementation decisions. #61 is next, with Eivin writing the foundation. No
+database implementation starts in this documentation slice.
 
 The user already operates without Notion dashboards: another two-week trial is not
 required. Preserve Calendar/YNAB/Sheets ownership, avoid dual writable core stores,
@@ -51,6 +50,8 @@ and keep Notion only as an archive after cutover. Shared organization follows na
 storage; full Studies v2 is not a migration prerequisite.
 
 ## After migration
+
+- #19/#20: Today active goals and selected-day task activity, using native relationships.
 
 - #46 / Studies v2: richer course workspace using the native backend and shared
   actions. Course notes/materials remain outside Life OS.

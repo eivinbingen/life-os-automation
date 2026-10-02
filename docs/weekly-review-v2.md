@@ -2,7 +2,7 @@
 
 Status checked on current main, 2026-10-02: guided lifecycle/history (#26),
 Look Back (#27), unresolved work (#28), Direction (#30), and Ahead (#9) are
-implemented. Metadata hygiene (#29) remains pending in separate PR #66. This is
+implemented, including metadata hygiene (#29) merged in PR #66. This is
 an ongoing product/behavior contract; individual issues own acceptance criteria.
 
 Current storage is JSON and current core records are Notion-backed. The native
@@ -220,9 +220,9 @@ shared goal/project views have their own services. UI and actions live under
 
 #8 date editing and #15 schema discovery have landed. Use current adapters and
 [dated schema evidence](notion-goals-schema.md) instead of repeating old discovery.
-#29 adds the separate metadata queue; standalone/unscheduled tasks are not
-inherently errors. Do not modify the separate in-flight hygiene implementation in
-this docs slice. Today #19/#20 are not prerequisites for Direction. Existing
+#29 implements the separate metadata queue; standalone/unscheduled tasks are not
+inherently errors. Reuse the merged hygiene queue during native integration.
+Today #19/#20 are not prerequisites for Direction. Existing
 Studies/Finance can provide reusable reads, not duplicate domain dashboards.
 
 `/weekly` now redirects to `/review/weekly`; the transitional V1 delivery in PR #25
