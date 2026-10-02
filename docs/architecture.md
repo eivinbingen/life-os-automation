@@ -1,220 +1,100 @@
 # Architecture
 
-## Overview
+## Current implementation
 
-Life OS will initially act as a unified interface over the services that already manage different parts of my life.
-
-The system should keep integrations, business logic, and user interfaces separate so that the same functionality can later support a web application, CLI commands, automations, and an MCP server.
-
-## Initial Architecture
+Life OS runs locally for one user: a Python/FastAPI backend and a Next.js frontend.
+The composition root is [`src/life_os/main.py`](../src/life_os/main.py).
 
 ```text
-External services
-    ↓
-Integration adapters
-    ↓
-Domain services
-    ↓
-FastAPI
-    ↓
-Next.js application
+Notion / Calendar / YNAB / Sheets     Local review repository
+                ↓                              ↓
+        Integration adapters          App-owned review data
+                └──────────→ Domain services ←─┘
+                                  ↓
+                               FastAPI
+                                  ↓
+                               Next.js
 ```
 
-### External Services
+Adapters normalize source records, handle pagination/authentication/errors, and
+bound external writes. Services own classification, relationships, review behavior,
+and finance calculations. API/UI code must not own those rules. CLI or future MCP
+interfaces reuse the services rather than duplicating behavior.
 
-The initial sources of truth are:
+| Data | Current owner |
+| --- | --- |
+| Tasks, projects, goals, areas, courses | Notion |
+| Events and time blocks | Google Calendar; read-only in Life OS |
+| Budgets/accounts/transactions | YNAB |
+| Financial forecasts | Google Sheets |
+| Weekly Review drafts/history | Local JSON repository |
 
-- **Notion:** Tasks, projects, goals, areas, and courses.
-- **Google Calendar:** Events and time blocks.
-- **YNAB:** Budgets, accounts, and transactions.
-- **Google Sheets:** Financial forecasts.
-- **Strava or wearable services:** Possible future health and workout data.
+## Code map
 
-### Integration Adapters
+- `src/life_os/integrations/`: Notion, Calendar, and finance adapters.
+- `src/life_os/models/`: normalized records and domain results.
+- `src/life_os/services/`: Today, review stages/history, entity views, Studies, Finance.
+- `src/life_os/api.py`: transport validation and service/action wiring.
+- `apps/web/app/`: web surfaces and server actions.
+- `src/finance/monthly_review.py`: preserved finance CLI, sharing calculations.
+- `tests/` and frontend tests: synthetic/fake verification; no live mutation tests.
 
-Each external service should have its own adapter responsible for:
+Read the relevant implementation rather than treating a speculative directory tree
+or endpoint list as a requirement. Shipped surfaces are summarized in [README](../README.md).
 
-- Authentication.
-- API requests.
-- Pagination and error handling.
-- Translating external data into internal models.
-- Hiding service-specific details from the rest of the application.
+## Current Weekly Review persistence
 
-### Domain Services
+[`WeeklyReviewRepository`](../src/life_os/services/weekly_reviews.py) stores drafts
+and completed snapshots in `<store-root>/var/life-os/weekly-reviews.json`.
+`LIFE_OS_STORE_ROOT` optionally overrides the repository-root default. A separate
+stable lock protects reread/revision-check/update/atomic replacement. Review revisions
+are distinct from the store schema version. Stale updates conflict; corrupt or
+unsupported stores are preserved and rejected. Completed snapshots are immutable.
 
-Domain services combine data and implement Life OS behavior.
+This is app-owned review history, not a second task/goal store. The current timezone
+is Europe/Zurich. The exact lifecycle, retry and backup/restore contracts are in
+[Weekly Review V2](weekly-review-v2.md#save-conflicts-and-recovery-contract).
 
-Examples include:
+## Notion transition
 
-- Building the Today overview.
-- Identifying relevant, overdue, and scheduled tasks.
-- Connecting tasks to projects and goals.
-- Preparing weekly and monthly review data.
-- Comparing financial forecasts with actual results.
+The user already operates without Notion dashboards. Migration is the next planned
+milestone after the remaining Today and Weekly Review gaps; another two-week
+Notion-free trial and full Studies v2 are not prerequisites.
 
-Domain logic should not depend directly on FastAPI, Next.js, MCP, or CLI code.
+The agreed starting stack is SQLite, synchronous SQLAlchemy, and Alembic. Keep
+storage behind repository boundaries and separate database models from API models.
+Use atomic user-action transactions, per-record revision checks, database constraints,
+and domain validation. Live, development, and test stores have separate configurable
+ignored paths. These are planned decisions, not shipped database behavior.
 
-### API Layer
+[#60](https://github.com/eivinbingen/life-os-automation/issues/60) records the native
+relationships, statuses/dates, selective import, safety decisions, and remaining
+questions. [The roadmap](roadmap.md#next-native-backend) owns sequencing.
+Eivin writes the foundation in #61 with coaching. Migration implementation waits
+until the current gaps are finished.
 
-FastAPI will expose the domain services to the frontend.
+Selectively migrate active/planned direction and unfinished work after reviewing
+conflicts/stale records; do not import every completed task or Notion page body.
+Notion remains authoritative until a verified final import and explicit cutover;
+then stop core reads/writes and retain Notion as an archive. No ongoing bidirectional
+sync. Calendar, YNAB, and Sheets retain their roles. Future reviews use SQLite;
+Eivin reports no existing personal reviews to migrate, but confirm before cutover.
 
-The first endpoints may include:
+Backups, restore verification, and a safe rollback procedure precede cutover.
+Plan an off-device copy before cutover; local copies alone do not cover device loss.
+A failed schema upgrade must preserve data and stop startup, never reset a store.
 
-- `GET /today`
-- `GET /calendar/events`
-- `GET /tasks`
-- `GET /health`
+## Future mobile access
 
-The API started read-only. It now supports task completion (`PATCH /tasks/{task_id}`,
-setting `Done`) and task capture (`POST /tasks`, with name and optional Scheduled/Due).
-Further writes remain bounded by individual vertical slices; basic editing is #8.
-
-### Frontend
-
-A Next.js application will provide the user interface.
-
-The first interface will be a local Today dashboard combining:
-
-- Today's calendar events.
-- Scheduled and due tasks.
-- Overdue tasks.
-- Related projects and goals.
-- Integration status and errors.
-
-## Suggested Repository Structure
-
-```text
-life-os-automation/
-├── apps/
-│   ├── api/
-│   └── web/
-├── src/
-│   └── life_os/
-│       ├── integrations/
-│       │   ├── notion/
-│       │   ├── google_calendar/
-│       │   ├── ynab/
-│       │   └── google_sheets/
-│       ├── domain/
-│       ├── services/
-│       └── models/
-├── tests/
-├── docs/
-├── AGENTS.md
-└── .env.example
-```
-
-The exact structure can evolve after inspecting the existing repository. Existing working finance automation should be preserved rather than reorganized prematurely.
-
-## Data Strategy
-
-No central database is required initially. Data will be retrieved from its authoritative source and normalized into internal models.
-
-PostgreSQL should only be introduced when the application needs capabilities such as:
-
-- Application-specific persistent data.
-- Historical snapshots.
-- User preferences.
-- Cached integration data.
-- Reliable synchronization state.
-- Native entities that no longer belong in Notion.
-
-### Notion transition
-
-Notion is scaffolding and the current source of truth for core Life OS data, not
-the intended permanent core backend. Keep the domain model independent of Notion
-and avoid adding app-only properties to Notion where possible. App-owned data,
-such as review drafts and history, can have separate persistence without creating
-a second writable copy of tasks, projects, or goals.
-
-While the user still relies on Notion for core operational workflows, Notion
-remains authoritative, including for actions taken through the Life OS app. Do
-not introduce a second writable source of truth or build ongoing bidirectional
-synchronization to support an early backend migration.
-
-The migration trigger is an independently usable Life OS app: the user can stop
-using Notion for core operational workflows. A practical readiness test is being
-able to go roughly two weeks without relying on the Life OS pages in Notion.
-Then perform a deliberate cutover:
-
-1. Freeze core structural changes in Notion.
-2. Export and migrate the current Life OS data into the app's own database.
-3. Make the Life OS app and database authoritative for core Life OS data.
-4. Stop writing core Life OS data to Notion.
-5. Keep Notion only as an archive or for optional general notes and reference
-   material, if desired.
-
-This is a migration, not a permanent synchronization arrangement. Google Calendar,
-YNAB, and other domain integrations retain their own source-of-truth roles. The
-[roadmap](roadmap.md) frames readiness as making Life OS independently usable;
-replacing the Notion backend is the final step, not the prerequisite.
-
-## Planned Weekly Review V2 persistence and services
-
-[Weekly Review V2](weekly-review-v2.md) adds a guided domain workflow with draft
-and completed review history. Keep date ranges, queue membership, deduplication,
-and completion semantics in domain services; share existing task actions with Today.
-Normalize new source fields in adapters after schema inspection, not in the UI.
-
-The planned WeeklyReview repository stores only app-owned review text/progress and
-minimal saved summary context. Use an ignored local JSON store with atomic replacement,
-a store schema version and per-review revision checks under a stable interprocess
-lock. Store data at `<repository-root>/var/life-os/weekly-reviews.json` (already
-covered by `var/` in `.gitignore`). The design specifies conflict recovery and
-manual backup/restore, including refusing writes to corrupt/unsupported stores.
-No PostgreSQL is added
-in this milestone. External task/goal/project/calendar records stay authoritative
-in their existing services; this is neither synchronization nor a duplicate task store.
-Completed review snapshots remain fixed when external records later change.
-
-Source outages must not appear as empty queues or zero activity. Current task data
-does not expose completion time; weekly activity claims require verified evidence
-or explicit unavailable/proxy labels. Schema-dependent write mappings are gated on
-#15 discovery, and shared date editing on #8. History storage is new planned behavior,
-not an already implemented API capability.
-
-## MCP Strategy
-
-MCP should be an additional interface over the same domain services, not a separate implementation.
-
-```text
-                 ┌── FastAPI ── Next.js
-Domain services ─┼── MCP
-                 └── CLI and automations
-```
-
-This allows Codex or ChatGPT to use the same tested operations as the web application without duplicating integration logic.
+Keep browser operations behind the API and avoid desktop-specific storage/URL
+assumptions. Responsive mobile web access is the initial direction to explore in
+[#65](https://github.com/eivinbingen/life-os-automation/issues/65). Hosting requires
+persistent storage, authentication, HTTPS, and operational recovery planning before
+remote exposure. It does not automatically require PostgreSQL or a native mobile app.
+Local-only access remains current behavior; deployment is separate future scope.
 
 ## Security
 
-- Credentials must be stored in environment variables or ignored local credential files.
-- Secrets and personal data must never be committed to Git.
-- `.env.example` should contain variable names but no real values.
-- Logs and tests should avoid exposing financial, calendar, or personal data.
-- Write permissions should be added gradually and only where necessary.
-- Use the narrowest API scopes available: read-only scopes where the application does not write (for example Calendar), and content scopes limited to the specific properties a slice writes (for example updating a task's `Done` checkbox).
-
-## Initial Technical Decisions
-
-- **Frontend:** Next.js with TypeScript.
-- **Backend:** FastAPI with Python.
-- **Python environment:** `uv`.
-- **Initial deployment:** Localhost.
-- **Initial access:** Single user.
-- **Initial behavior:** Read-only, extended with selected writes one vertical slice at a time.
-- **Database:** None initially.
-- **Sources of truth:** Existing external services.
-
-## First Vertical Slice
-
-The first vertical slice is a calendar-aware Today dashboard:
-
-1. Retrieve today's Google Calendar events.
-2. Retrieve relevant Notion tasks.
-3. Normalize both into internal models.
-4. Combine them in a Today domain service.
-5. Expose the result through FastAPI.
-6. Render it in Next.js.
-7. Handle unavailable services without breaking the entire dashboard.
-
-This slice should establish reusable architectural boundaries while delivering something immediately useful.
+Keep credentials in ignored local files/environment variables; `.env.example`
+contains names/placeholders only. Use narrow integration capabilities. Do not log
+personal source payloads, commit review history, or use live writes in tests.

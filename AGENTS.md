@@ -1,61 +1,20 @@
-# Life OS
+# Life OS working rules
 
-## Mission
+## Context and scope
+- Start with the assigned GitHub issue, applicable directory instructions, and relevant code.
+- The issue's acceptance criteria and exclusions define the slice. Read supporting document sections only when needed; use [the documentation index](docs/README.md) to find them. Do not load the whole backlog or planning chat.
+- Flag conflicting requirements rather than silently choosing between them. Read dependency issues only when their contracts affect the slice.
 
-Build a personal Life OS that integrates Notion, Google Calendar,
-YNAB, and Google Sheets behind a better custom interface.
+## Boundaries
+- Keep adapters/repositories → domain services → API → UI boundaries; business logic is independent of UI and transport.
+- Notion owns core operational data until an explicit cutover. Calendar, YNAB, and Sheets keep their respective roles. No dual writable core store.
+- Preserve the independent monthly finance review. External writes must be explicit and issue-scoped.
+- Never commit credentials, personal data, exports, databases, or backups. Never perform live external writes in automated verification.
+- Database migration, hosting, authentication, or PostgreSQL work needs an issue explicitly authorizing that scope; roadmap direction alone is insufficient.
 
-## Current sources of truth
-
-- Notion: Areas, Goals, Projects, Tasks, and Courses
-- Google Calendar: events and time blocks
-- YNAB: budgets and transactions
-- Google Sheets: financial forecasts
-
-## Architecture direction
-
-Use this layering:
-
-integrations/adapters → domain services → CLI/FastAPI/MCP → Next.js
-
-Business logic must not depend directly on FastAPI, MCP, or the UI.
-
-## Current priority
-
-Complete the local, calendar-aware Today dashboard. Add only selected,
-reversible write actions that are explicitly included in an approved vertical slice.
-
-## Current constraints
-
-- Preserve the existing monthly finance review.
-- Do not add PostgreSQL yet.
-- Do not add authentication or cloud hosting yet.
-- Never commit credentials or personal API data.
-- Keep external systems as the sources of truth.
-- Prefer small vertical slices over broad infrastructure work.
-- External writes must be explicit, narrow, and reversible where possible.
-
-## Delivery workflow
-
-- Use a GitHub issue to define each planned vertical slice.
-- Treat the issue's acceptance criteria and out-of-scope section as the implementation boundary.
-- Use an isolated branch or worktree for each slice.
-- Open a pull request that links the issue and reports changes, verification, and remaining risks.
-- Keep unrelated refactors out of feature pull requests.
-- Finish one slice in a working state before expanding its scope.
-
-## Implementation mode
-
-- Default to agent-led implementation of complete, reviewable slices.
-- Explain meaningful architectural decisions and point to the important files.
-- Let Eivin implement the code when the issue or conversation explicitly identifies a learning exercise.
-- Ask for product clarification when ambiguity changes user-visible behavior or external writes.
-
-## Verification
-
-- Test behavior after changes.
-- Use fakes or mocks for automated tests of external integrations.
-- Never perform live external writes as part of automated verification.
-- Run Python tests and Ruff checks for backend changes.
-- Run frontend lint and build checks for frontend changes.
-- Include any necessary manual verification steps in the pull request.
+## Delivery and learning
+- Use a fresh implementation chat and isolated branch/worktree per issue. Supply its link rather than the planning transcript.
+- Default to agent-led delivery. In designated learning exercises, Eivin writes the code; coach/review without taking over. Ask about unresolved product behavior.
+- Keep unrelated refactors out. Open an issue-linked PR describing behavior, verification, and remaining risks.
+- Use fake integrations/synthetic data. For backend changes run Python tests and Ruff; for frontend changes run tests, lint, and build. For docs-only changes verify consistency, local links, and the diff.
+- For unfinished work, keep a compact handoff: issue/mode, checkout/branch, completed work, essential files, checks, next action, and blockers. See [context workflow](docs/context-workflow.md).

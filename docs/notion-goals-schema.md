@@ -1,5 +1,15 @@
 # Notion Goals, Areas, and Projects data source schema
 
+Scope: dated Notion adapter/migration evidence, not the future native domain model.
+Read this only for relevant Notion reads/writes or import mapping. The native rules
+are recorded in [#60](https://github.com/eivinbingen/life-os-automation/issues/60).
+No live schema reinspection was performed by the 2026-10-02 documentation audit.
+
+Current code note: `services/projects.py` prefers the project-side Goal relation,
+then queries the goal-side Projects relation; formula strings are display-only.
+`integrations/notion_projects.py` writes both relation sides and exposes partial
+sync failures. Reinspect and reconcile actual mappings during #60/#62; do not invent schema evidence.
+
 Inspected live on 2026-09-28 via the Life OS integration token
 (`GET /v1/data_sources/{id}`, plus workspace search to locate the Goals and
 Areas data sources). Notion remains the source of truth; this document
@@ -23,7 +33,7 @@ and resolves the schema gates from the #15 discovery.
 | `Status` | status | Options: Not Started, **Active**, Failed, Done. Active-goal definition: `Status = Active`. Completion mapping: `Status = Done`. |
 | `Area` | relation | Goal → Area; directly writable |
 | `Target Date` | date | Directly writable; the closest thing to an "intended outcome" deadline |
-| `Projects` | relation | Goal → Projects; directly writable; the only goal↔project link (see G2 below) |
+| `Projects` | relation | Goal → Projects; writable, separately maintained from project-side Goal |
 | `Courses` | relation | Goal → Courses; directly writable |
 | `Tasks` | relation | Goal → Tasks; not consulted (Life OS joins via lower-level relations) |
 | `Progress` | rollup | Read-only rollup over projects/tasks |
@@ -55,12 +65,10 @@ its Name, Status, Area, Target Date, and related projects.
 | `Resolved Goal` / `Resolved Area` | formula | Read-only inherited context |
 | `Open Tasks` / `Scheduled Tasks` / `Progress` / `Project Attention` | formula/rollup | Read-only |
 
-An initial inspection on 2026-09-28 missed the `Goal` and `Direct Area`
-relations; a same-day re-inspection against live pages confirmed both
-exist. They are **not synced with the goal-side `Projects` relation**:
-live project pages show an empty `Goal` relation while `Resolved Goal`
-still resolves through the goal's own `Projects` relation. The goal-side
-relation is the one actually populated, so it is the authoritative link.
+The 2026-09-28 reinspection confirmed `Goal` and `Direct Area` after an initial
+inspection missed them. Observed project pages had an empty direct Goal while
+Resolved Goal still showed goal-side context. The two relation sides are not
+auto-synced; current app behavior below handles both.
 
 ## Tasks properties (goal-relevant)
 
@@ -82,54 +90,48 @@ PR #40 / the Look Back slice.
 - Missing relations never hide an entity: a project without a resolvable
   goal, or a goal with no projects, stays visible with neutral context.
 
-## Creation and completion mappings (resolves G1–G6)
+## Creation and completion mappings
 
-| Gate | Answer |
+| Operation | Current source contract |
 | --- | --- |
-| G1 goals active status | `Status = Active` (verified live 2026-09-28) |
-| G2 goal↔project relation | Goal-side `Projects` relation is the authoritative link. The project-side `Goal` relation exists and is writable but is **not auto-synced** (live pages show it empty where `Resolved Goal` resolves); writes should go through the goal side. |
-| G3 goal creation fields | `Name` (title, required); `Status` defaults to Not Started; optional `Area`, `Target Date`, `Courses`, `Projects` |
-| G4 goal completion | `Status = Done` (not "Completed") |
-| G5 writable relations on Projects | `Goal`, `Direct Area`, and `Courses` are all directly writable; project forms can prefill a goal, writing the goal-side `Projects` relation. |
-| G6 goals description property | None exists. Editable goal set: Name, Status, Area, Target Date. |
+| Active goals | `Status = Active` |
+| Create goal | Required Name; default Not Started; optional Area/Target Date and supported relations |
+| Complete goal | `Status = Done`, status-only; no cascading changes |
+| Edit goal | Name, Status, Area, Target Date; no source Description property |
+| Link project to goal | Project-side Goal and goal-side Projects are separate relations; current project adapter updates both |
+| Project creation | Current adapter requires Name; Planned default; optional Goal, Courses and Deadline |
 
-Consequence for #49/#45: **Complete Goal = `Status = Done`, status-only,
-no cascade.** Projects can be created/edited with a visible goal prefill;
-the link is written through the goal-side `Projects` relation, the side
-the rest of the app also reads.
+## Current app relationship behavior
 
-## Unverified assumptions
+Checked against main during the 2026-10-02 documentation audit, without live schema
+reinspection:
 
-- Status option values verified against live options on 2026-09-28.
-- If the schema changes (renamed properties, new status options), re-run
-  `scripts/inspect_notion_schema.py` before trusting these slices.
+- Project detail prefers the project-side `Goal` relation. When empty, it queries
+  goals whose `Projects` relation includes the project. Formula text is a final
+  display-only fallback, not a navigable ID.
+- Goal detail reads the goal-side `Projects` relation. This is not guaranteed to
+  match the project-side relation automatically.
+- Project creation writes its direct Goal and then links the new project on the
+  goal side. If the second write fails, `GoalLinkError` carries the created ID:
+  retry must not blindly create another project.
+- Project edits update direct fields and synchronize removal/addition on the goal
+  side, using previous-goal information for retry handling. This is an external
+  multi-call operation, not a database transaction.
+- Task Project/Course and goal Area writes use inspected direct relations. Formula
+  and rollup values are read-only. Missing relations keep records visible.
 
-## Inheritance in the app vs in Notion
+Relevant code: `services/projects.py`, `services/goals.py`,
+`integrations/notion_projects.py`, and `integrations/notion_goals.py`. For exact
+payload/retry behavior, read the relevant adapter and tests.
 
-The `Resolved Goal`, `Resolved Area`, and `Inherited Goal` formula/rollup
-properties exist to make the hierarchy work inside Notion; Notion formulas
-cannot traverse relations dynamically, so they resolve it eagerly as plain
-strings. They are Notion-internal implementation details, **not part of the
-domain contract**.
+## Reinspection and native migration
 
-**The standard pattern for the whole hierarchy (Area → Goal → Project →
-Task):** every entity reads both its direct relation and the resolved
-fallback, preferring the direct side; writes always populate the direct
-side.
+Property/status observations above are dated, not guarantees about future live
+schemas. Use `scripts/inspect_notion_schema.py` for read-only reinspection when a
+mapping changes or a conflict needs resolution. Reconcile both goal/project link
+sides during #60/#62 instead of assuming that either side alone contains every link.
 
-- **Reads**: prefer the real relation (it carries an ID, so it is
-  navigation-ready); fall back to the resolved formula string when the
-  relation is empty. Task → goal/area reads the `Project` relation with
-  `Resolved Goal`/`Resolved Area`/`Inherited Goal` as display-only
-  fallback; Project → goal/area reads the `Goal`/`Direct Area` relations
-  with `Resolved Goal`/`Resolved Area` as fallback; Goal → area reads the
-  `Area` relation (no higher level, no fallback).
-- **Writes**: always write the direct relation — task→`Project`,
-  project→`Goal` (plus the goal-side `Projects` relation, since the two
-  sides do not auto-sync), goal→`Area`. Records the app touches become
-  direct-linked over time, making the fallback increasingly rare.
-- **Migration**: any future store only has to provide the relations,
-  which is what makes a transition away from Notion cheap. Reading a
-  formula is acceptable as a display-only optimization, but navigation
-  and logic must rely on real relations (the project detail view reads
-  the project-side `Goal` relation, never `Resolved Goal`, for its link).
+The native inheritance model in #60 differs from current Notion mappings. Import
+must flag conflicting links for Eivin's decision, preserving source-ID mapping.
+Do not apply native no-override rules to live Notion data before cutover, add more
+Notion-only resolved properties, or write formulas as if they were relations.

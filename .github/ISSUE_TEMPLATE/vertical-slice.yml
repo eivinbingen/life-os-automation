@@ -40,8 +40,8 @@ body:
     id: constraints
     attributes:
       label: Constraints and relevant context
-      description: Include architecture, integration, privacy, or external-write constraints that apply.
-      placeholder: Follow AGENTS.md and link any relevant project documentation.
+      description: Include only slice-specific constraints and links to required document sections; do not repeat repository-wide rules.
+      placeholder: AGENTS.md supplies global rules. Link only the relevant design sections and dependency contracts.
 
   - type: textarea
     id: out-of-scope
