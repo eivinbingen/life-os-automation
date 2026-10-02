@@ -33,21 +33,6 @@ export type IntegrationStatus = {
   error: string | null;
 };
 
-export type WeekDay = {
-  day: string;
-  events: CalendarEvent[];
-  scheduled_tasks: Task[];
-  due_tasks: Task[];
-};
-
-export type Week = {
-  start: string;
-  end: string;
-  days: WeekDay[];
-  overdue_tasks: Task[];
-  statuses: IntegrationStatus[];
-};
-
 export type FinanceAccount = {
   name: string;
   balance: number;
@@ -72,10 +57,6 @@ export type FinanceReview = {
 
 export type RefreshResult =
   | { ok: true; today: Today }
-  | { ok: false; error: string };
-
-export type RefreshWeekResult =
-  | { ok: true; week: Week }
   | { ok: false; error: string };
 
 export type RefreshFinanceResult =
@@ -209,44 +190,6 @@ export async function refreshToday(day: string): Promise<RefreshResult> {
   }
 }
 
-export async function refreshWeek(day: string): Promise<RefreshWeekResult> {
-  const apiUrl = process.env.LIFE_OS_API_URL;
-  if (!apiUrl) {
-    return { ok: false, error: "The connection to the local Life OS service is not configured." };
-  }
-
-  // A weekly read includes Calendar, paginated tasks, and project lookups.
-  // Normal requests can exceed Today's three-second refresh budget.
-  const signal = AbortSignal.timeout(30_000);
-  let response: Response;
-  try {
-    response = await fetch(`${apiUrl}/week?day=${encodeURIComponent(day)}`, {
-      cache: "no-store",
-      signal,
-    });
-  } catch {
-    return {
-      ok: false,
-      error: signal.aborted
-        ? "Loading this week took too long. Calendar or task data may be slow; please try again."
-        : "The local Life OS service could not be reached. Check that it is running, then try again.",
-    };
-  }
-  if (!response.ok) {
-    return { ok: false, error: "The Life OS service could not load this week's data. Please try again." };
-  }
-  try {
-    return { ok: true, week: (await response.json()) as Week };
-  } catch {
-    return {
-      ok: false,
-      error: signal.aborted
-        ? "Loading this week took too long. Calendar or task data may be slow; please try again."
-        : "The Life OS service returned an unreadable response. Please try again.",
-    };
-  }
-}
-
 export async function updateTaskDone(taskId: string, done: boolean) {
   const result = await updateTask(taskId, { done });
 
@@ -264,8 +207,8 @@ export async function refreshFinance(month: string): Promise<RefreshFinanceResul
     return { ok: false, error: "The connection to the local Life OS service is not configured." };
   }
 
-  // A finance read queries YNAB and Google Sheets; like the weekly read, it
-  // can exceed Today's three-second refresh budget.
+  // A finance read queries YNAB and Google Sheets and can exceed Today's
+  // three-second refresh budget.
   const signal = AbortSignal.timeout(30_000);
   let response: Response;
   try {
