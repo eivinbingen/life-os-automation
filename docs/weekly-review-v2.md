@@ -1,9 +1,14 @@
 # Weekly Review V2: guided recalibration
 
-Status: agreed product scope, planned for implementation. This document does not
-describe shipped behavior. Implement one issue-defined vertical slice at a time;
-do not start parallel implementation until the shared contracts and dependencies
-below are settled.
+Status checked on current main, 2026-10-02: guided lifecycle/history (#26),
+Look Back (#27), unresolved work (#28), Direction (#30), and Ahead (#9) are
+implemented. Metadata hygiene (#29) remains pending in separate PR #66. This is
+an ongoing product/behavior contract; individual issues own acceptance criteria.
+
+Current storage is JSON and current core records are Notion-backed. The native
+SQLite model/storage decisions in [#60](https://github.com/eivinbingen/life-os-automation/issues/60)
+are future migration work, not permission to change today's behavior. Read only
+the stage or persistence section needed for the assigned issue.
 
 ## Purpose and boundaries
 
@@ -104,8 +109,7 @@ neither an empty queue nor an integration outage should force or prevent complet
 Deliberately review every current active goal and its projects using the existing
 Notion definition of active. Show useful verified context and do not hide goals
 with missing optional relationships. Provide **View Goal**, **Add Project**, and
-**Complete Goal**, reusing existing destinations and narrow domain actions. A Notion
-source link is sufficient for View Goal until an app detail view exists.
+**Complete Goal**, reusing shared app entity views and narrow domain actions.
 
 End with **“Has anything changed?” / “Is your direction still right?”** and
 **Add Goal**, including the empty-goals state. This prompts the user to consider
@@ -180,13 +184,14 @@ Completion carries a stable operation ID: retrying that same completed operation
 returns the existing result without another mutation, even if its original response
 was lost; a different stale completion remains a conflict.
 
-Planned storage location: `<repository-root>/var/life-os/weekly-reviews.json`,
+Current storage location: `<repository-root>/var/life-os/weekly-reviews.json`,
 resolved from the repository root rather than the launch working directory. The
 existing `var/` ignore rule covers the store, same-directory temporary files, and
 `weekly-reviews.lock`. Each checkout has its own store; do not automatically copy
-personal history into worktrees. No history file is created by this documentation PR.
+personal history into worktrees. Documentation changes do not create or copy a
+history store.
 
-Manual backup/restore procedure for #26:
+Manual backup/restore procedure for the current JSON store:
 
 1. Stop all Life OS processes using this checkout. Copy the JSON file to a
    user-chosen private backup location; do not commit it. Record the backup date.
@@ -200,84 +205,36 @@ Manual backup/restore procedure for #26:
    records. Restore intentionally rolls history back to the selected backup; old
    browser edits must be reconciled rather than automatically resubmitted.
 
-#26 must verify two writers using the same revision (only one succeeds), writes to
-different weeks without record loss, duplicate completion after a lost response,
+Persistence changes must verify two writers using the same revision (only one
+succeeds), writes to different weeks without record loss, duplicate completion
+after a lost response,
 corrupt/unsupported stores, and backup/restore with synthetic records.
 
-## Existing architecture and dependencies
+## Implementation references and dependencies
 
-Repository inspected during planning:
-[`src/life_os/models/notion.py`](../src/life_os/models/notion.py),
-[`src/life_os/integrations/notion_tasks.py`](../src/life_os/integrations/notion_tasks.py),
-[`src/life_os/integrations/google_calendar.py`](../src/life_os/integrations/google_calendar.py),
-[`src/life_os/services/today.py`](../src/life_os/services/today.py), and
-[`src/life_os/api.py`](../src/life_os/api.py). The current implementation supports task capture
-and Done writes; name/date editing remains in #8. There are no goal/course adapters
-or WeeklyReview persistence yet. Do not mistake documented hierarchy for verified
-Notion schema or implemented behavior.
+Read the relevant service and tests for the assigned stage:
+`src/life_os/services/weekly_reviews.py`, `look_back.py`, `clean_up.py`,
+`direction.py`, or `ahead.py`. Shared task actions are in the Notion adapter;
+shared goal/project views have their own services. UI and actions live under
+`apps/web/app/review/weekly/`. [Architecture](architecture.md) owns layering.
 
-- Preserve adapters → domain services → FastAPI → Next.js. Domain logic and review
-  persistence do not depend on UI or API types.
-- #8 owns shared task date-editing rules, including its unresolved date-time policy.
-  Reuse it for cleanup/Ahead rather than implementing a conflicting editor.
-- #15 owns relationship/schema discovery. Reuse and extend its evidence for Needs
-  Processing, editable metadata, and goal/project creation/status mappings; do not
-  duplicate discovery or assume formulas are writable.
-- #19 active-goal reads can be reused when available. Its Today UI and #20 selected-day
-  goal counts are not prerequisites for Review Direction.
-- #10 remains Studies v1 and #11 remains Finance v1. This plan does not expand or
-  reorder their milestones, and preserves the working monthly finance review.
-- External-write mappings that remain ambiguous are implementation gates. Inspect
-  schema read-only first; seek product clarification only for choices evidence
-  cannot settle. This planning session performs no live Notion/Calendar writes.
+#8 date editing and #15 schema discovery have landed. Use current adapters and
+[dated schema evidence](notion-goals-schema.md) instead of repeating old discovery.
+#29 adds the separate metadata queue; standalone/unscheduled tasks are not
+inherently errors. Do not modify the separate in-flight hygiene implementation in
+this docs slice. Today #19/#20 are not prerequisites for Direction. Existing
+Studies/Finance can provide reusable reads, not duplicate domain dashboards.
 
-## Incremental delivery and verification
+`/weekly` now redirects to `/review/weekly`; the transitional V1 delivery in PR #25
+is historical context. It is not an outstanding prerequisite or an additional
+weekly product. [Roadmap](roadmap.md) owns current sequencing; issues #26–30/#9
+retain their slice contracts. Do not replay the old planning/parallel-dispatch gates
+as requirements for already delivered work.
 
-The milestone consists of complete user-visible slices, each spanning whatever
-model, adapter, service, API, and UI work its outcome requires. Start with a usable
-manual guided review and history, then add context and decisions to it. GitHub
-issues carry the detailed acceptance criteria, exclusions, and verification.
-
-Milestone: [Weekly Review V2](https://github.com/eivinbingen/life-os-automation/milestone/6).
-Planning documentation: [#32](https://github.com/eivinbingen/life-os-automation/issues/32).
-
-| Issue | User-visible increment | Dependencies |
-| --- | --- | --- |
-| [#26](https://github.com/eivinbingen/life-os-automation/issues/26) | Start, resume, and complete a guided Weekly Review with saved history | First slice |
-| [#27](https://github.com/eivinbingen/life-os-automation/issues/27) | Look back on the week with honest activity context and manual wins | #26; verify activity evidence |
-| [#28](https://github.com/eivinbingen/life-os-automation/issues/28) | Resolve unfinished work directly from Weekly Review | #26, #8 |
-| [#29](https://github.com/eivinbingen/life-os-automation/issues/29) | Process task metadata in a separate Weekly Review cleanup queue | #26, #28, #15 schema |
-| [#30](https://github.com/eivinbingen/life-os-automation/issues/30) | Review active goals and act on direction during Weekly Review | #26, #15 schema; reuse #19 reads if available |
-| [#9](https://github.com/eivinbingen/life-os-automation/issues/9) (updated) | Look ahead chronologically within the guided Weekly Review | #26; #8 for rescheduling; #10/#15 optional Studies context |
-
-Existing #9 is repurposed for Ahead in V2. The user approved shipping the earlier
-read-only overview as a transitional V1 through
-[PR #25](https://github.com/eivinbingen/life-os-automation/pull/25), after correctness
-fixes. This preserves useful range adapters, week models/service, tests, and a
-usable weekly view rather than discarding them because the product plan evolved.
-
-The temporary `/weekly` page and its “Overdue before this week” panel are explicitly
-accepted V1 behavior, not the final V2 workflow. V2 integrates that work into
-`/review/weekly`, pairs reviewed/Ahead dates, moves unresolved decisions to Clean Up,
-and adds the actions/history defined here. The V1 view groups events and task
-sections by day; a unified chronological Ahead presentation remains #9 work.
-PR #25 does not close revised issue #9 or satisfy the V2 milestone. The old V1
-milestone records the transitional delivery; V2 remains the agreed next design.
-
-#8, #10, #15, #19, and #20 retain their own
-scope/milestones; dependencies do not silently expand those issues.
-
-Before parallel implementation, land the shared workflow/date/history contract,
-resolve #8/#15-dependent mappings, and agree ownership of shared adapters/editors.
-This document authorizes planning, not dispatch of implementation agents.
-
-Use fake integrations and synthetic records for automated checks; never perform
-live external writes in automated verification. Feature slices must test behavior
-including duplicate IDs, week/DST boundaries, partial data, failed writes, restart,
-and history stability as relevant. Follow AGENTS.md Python/Ruff and frontend
-test/lint/build requirements for changed code. Manually inspect desktop, narrow
-screens, and keyboard flows. Documentation-only changes need consistency/link and
-diff checks, not an application test run.
+Use synthetic data/fake integrations for checks of IDs, date/DST boundaries,
+partial sources, failed/stale writes, restart, history stability and recovery.
+Follow AGENTS.md for applicable backend/frontend checks. Documentation changes
+need consistency/link/diff verification only.
 
 ## Explicitly deferred to V3 / later
 

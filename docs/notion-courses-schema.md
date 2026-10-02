@@ -1,5 +1,10 @@
 # Notion Courses data source schema
 
+Scope: dated Notion adapter/migration evidence, not the future native domain model.
+Read this only for relevant Notion reads/writes or import mapping. The native rules
+are recorded in [#60](https://github.com/eivinbingen/life-os-automation/issues/60).
+No live schema reinspection was performed by the 2026-10-02 documentation audit.
+
 Inspected live on 2026-09-27 via the Life OS integration token
 (`GET /v1/data_sources/{id}` on the `Courses` data source). Notion remains
 the source of truth; this document records what the read-only Studies

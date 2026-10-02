@@ -1,87 +1,72 @@
-# Domain Model
+# Domain model
 
-## Core Hierarchy
+## Concepts
 
-```text
-Area → Goal → Project → Task
-```
+| Entity | Meaning |
+| --- | --- |
+| Area | Stable, flat category of life, without completion status |
+| Goal | Outcome belonging to an area |
+| Course | Academic subject during a semester; can group projects and standalone tasks |
+| Project | Finite body of work, within or outside a course |
+| Task | Concrete action, optionally linked to a project, course, or goal |
+| WeeklyReview | App-owned recalibration draft or completed snapshot |
 
-- **Area:** A continuing part of life without a completion date, such as Studies, Finance, or Health.
-- **Goal:** A measurable outcome connected to an area. Goal completion is `Status = Done` in the Goals schema (options: Not Started, Active, Failed, Done); there is no description property, so a goal's context is its name, status, area, target date, and related projects (see `docs/notion-goals-schema.md`).
-- **Project:** A finite body of work that contributes to a goal. The Projects schema has no Goal relation — a project's goal context is read-only via the `Resolved Goal` formula, and goal↔project links are made on the goal side.
-- **Task:** A concrete action that may belong to a project.
+The hierarchy is optional: not every task needs a project, and not every project
+needs a course. Keep conceptual relationships separate from a source's properties.
 
-The Notion Tasks `Status` property is a read-only formula over `Done`/`Due`
-(✅ Done, 🟡 Today, 🔴 Overdue, 🟢 Upcoming, —). There is no reversible
-dropped/cancelled state, so the Weekly Review Clean Up (issue #28) omits a
-Drop action: dropping is never equated with completing or deleting, and
-adding Drop requires a product/schema decision tracked separately.
+## Current Notion-backed behavior
 
-## Courses
+Notion currently owns core records. Source status values and writable fields differ
+between entities; inspect the relevant adapter/model and dated schema evidence:
+[goals/areas/projects](notion-goals-schema.md) and [courses](notion-courses-schema.md).
 
-A **Course** represents an academic subject during a specific semester.
+Tasks have a Done checkbox, Scheduled/Due, optional project/course context, and no
+reliable completion timestamp. Formula-derived task status is not writable.
+There is no supported reversible task Drop state; do not equate dropping with
+completion or deletion. Name/date/completion and implemented relationship actions
+write narrow explicit properties while preserving others.
 
-Courses can contain:
+Direct relations carry IDs for navigation. Formula/rollup context is display-only
+and must not be written or treated as a reliable entity identity. Goal-side and
+project-side relations may differ: the schema document records dated observations
+and unresolved inconsistencies; consult current adapters before modifying links.
+Do not apply the future native model to current Notion writes.
 
-- Course-related projects.
-- Assignments and assessments.
-- Study tasks.
-- Important dates and resources.
+## Agreed native model — not implemented
 
-A course belongs to the Studies area but does not replace goals or projects.
+The authoritative detailed design record is
+[#60](https://github.com/eivinbingen/life-os-automation/issues/60).
+Key rules for understanding that direction:
 
-The read-only `/studies` overview reads active courses and upcoming work
-directly from Notion; all course properties are optional and missing
-relations never drop a course or task (see `docs/notion-courses-schema.md`).
+- A task belongs to at most one project; otherwise it may belong directly to one
+  course, or directly to one goal, or stand alone.
+- Course → project → task inherits goal/area with no overrides. A project without
+  a course may choose one goal. Direct goal/area links are only available when
+  no higher parent supplies them; do not store redundant resolved columns.
+- Goals, projects, and courses must resolve to an area. Tasks may remain
+  uncategorized for low-friction capture; review offers categorization.
+- Tasks use done/undone. Goals/projects/courses use planned, active, completed,
+  canceled; completing parents does not complete children.
+- Scheduled is the next intended workday; Due is an optional whole-item deadline.
+  Both are plain dates. Active goals require a target date. Completion timestamps,
+  UUID identity, created/updated timestamps and revisions are native requirements.
 
-## Inheritance
+For linking/unlinking, dates, content, deletion and import edge cases, read the
+specific section of #60 rather than duplicating its full decision record here.
 
-Relationships should provide context automatically:
+## WeeklyReview
 
-- A task can inherit its goal and area through its project.
-- A project can inherit its area through its goal.
-- Direct relationships remain available for items that do not belong to the complete hierarchy.
-- Explicit relationships should take precedence when appropriate.
-
-In the live schema, inherited goal/area context on tasks and projects is
-computed by read-only formulas (`Resolved Goal`, `Resolved Area`,
-`Inherited Goal`) and must never be written; the writable relations are
-Goal→Area, Goal→Projects (goal side; the project-side `Goal` relation is
-a separate writable property Notion does not auto-sync), Project→Tasks
-(task side), and Task→Course (task side). See `docs/notion-goals-schema.md`.
-
-The standard pattern across the hierarchy: every entity reads both its
-direct relation and the resolved fallback, preferring the direct side;
-writes always populate the direct side. Relations are the contract —
-formulas are at most a display-only shortcut, never something navigation
-or logic depends on.
-
-## Scheduling
-
-- **Scheduled:** When I intend to work on a task.
-- **Due:** The actual deadline.
-- Calendar events represent fixed commitments or time blocks rather than tasks.
-
-## Sources of Truth
-
-Notion is initially the source of truth for Areas, Goals, Projects, Tasks, and Courses. The application normalizes these records into internal models without creating duplicate editable versions.
-
-## Planned WeeklyReview (V2)
-
-A WeeklyReview is an app-owned record of guided recalibration, separate from the
-Notion task/project/goal hierarchy. It contains a stable ID, reviewed-week and
-following-week dates, timezone, draft/completed state, timestamps, section progress,
-manual Wins, and optional reflection. Each record has a persisted integer revision
-for expected-version save checks; the store schema version is separate metadata. It may retain a compact objective summary
-with metric definitions, capture time, and source-completeness status.
+The implemented review model stores stable identity, reviewed Monday–Sunday week,
+paired Ahead dates, timezone, draft/completed lifecycle, integer revision,
+created/updated/completed timestamps, section progress, Wins/reflection and optional
+compact saved context with definitions/completeness/capture time.
 
 One record per reviewed week supports resume and idempotent completion. Completed
-records are read-only history; changes to live tasks do not rewrite saved review
-content. Persist locally behind a repository interface, without PostgreSQL or a
-new Notion database. See [Weekly Review V2](weekly-review-v2.md) for lifecycle, date
-semantics, and storage boundaries. This model is planned, not implemented.
+records are read-only; live entity edits do not rewrite saved context. Current
+storage is JSON behind a repository; planned native storage is SQLite. See
+[Weekly Review V2](weekly-review-v2.md) for the behavioral and recovery contracts.
 
-No WeeklyPriority entity, importance score, health-rule model, analytics model, or
-habit entity is introduced in V2. The current Task model also has no completion
-timestamp: weekly completion/activity claims require schema evidence rather than
-assuming that Scheduled, Due, or last-edited timestamps prove completion.
+No weekly-priority entity, inferred importance model, analytics model or habit
+entity is introduced by V2. Current completion statistics use explicitly labeled
+schedule-based evidence; future native timestamps do not retroactively prove when
+old work was completed.

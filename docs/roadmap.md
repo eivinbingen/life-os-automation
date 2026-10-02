@@ -1,113 +1,65 @@
 # Roadmap
 
-## Completed: Foundation
+Status checked against current main and GitHub on 2026-10-02. Issues own acceptance
+criteria; this page owns direction and sequencing, not a duplicate backlog.
 
-- Preserved the existing monthly finance review.
-- Established integration, domain, service, API, and frontend boundaries.
-- Documented the product vision, architecture, and domain model.
-- Added tests around existing and newly extracted behavior.
+## Delivered foundation
 
-## Completed: Today Dashboard (v1)
+Today combines Calendar events and scheduled/due/overdue Notion tasks, day navigation,
+refresh, capture, name/date edits, completion, project context and source status.
+Weekly Review has its guided lifecycle/history, Look Back, unresolved-work Clean Up,
+Direction and Ahead. Shared goal/project views and goal actions exist. Studies v1
+shows active courses/upcoming work; Finance v1 exposes forecast-versus-actual in
+the web app while preserving the CLI.
 
-The local Today dashboard combines, for the selected day:
+Some project creation/editing infrastructure is already wired on main even though
+#45 remains open. Verify the issue's full user-facing acceptance criteria before
+calling that slice complete or implementing a duplicate.
 
-- Google Calendar events.
-- Scheduled, due, and overdue Notion tasks.
-- Project context on tasks (#4).
-- Clear integration and error status, including when the backend is unavailable (#5).
-- Day navigation (#1).
+## Current gaps
 
-The complete application starts with one local command (#3). Today v1 also
-includes the first selected write action: completing a task updates its
-`Done` checkbox in Notion. Calendar events and all other task fields remain
-read-only.
+- [#29](https://github.com/eivinbingen/life-os-automation/issues/29): Weekly Review
+  metadata hygiene; implementation is in separate PR #66, not yet merged at this audit.
+- [#19](https://github.com/eivinbingen/life-os-automation/issues/19): active goals on Today.
+- [#20](https://github.com/eivinbingen/life-os-automation/issues/20): selected-day task activity per goal.
 
-## Current: Today Dashboard (v2)
+Finish these before native migration implementation. Source-schema rules remain
+Notion-backed until cutover. Do not assume a closed planning issue proves every
+related user-facing feature is delivered.
 
-Agreed scope, delivered as separate vertical slices:
+## Next: native backend
 
-- Refresh the selected day's data without reloading the page (#6).
-- Capture a new Notion task from Today, with Scheduled defaulting to the
-  selected day and an optional Due date (#7).
-- Edit a task's name, Scheduled, and Due from Today. Overdue behavior is
-  revised so an incomplete task scheduled on the selected day also appears in
-  Scheduled while keeping its overdue indicator (#8).
+[Milestone 8](https://github.com/eivinbingen/life-os-automation/milestone/8):
 
-Goal, course, and area context is under discovery in #15. Whether that
-context belongs to v2 or a later version is explicitly undecided until that
-discovery concludes.
+1. #60: collaboratively agree native data model, inventory and migration contract.
+2. #61: Eivin builds the SQLite/SQLAlchemy/Alembic foundation with coaching.
+3. #62: staged selective import and reconciliation.
+4. #63: current workflows on native repositories. This and #62 can overlap once
+   foundation/contracts are ready; both must pass before cutover.
+5. #64: final verified import, backup/recovery and deliberate authority switch.
+6. #45: shared project creation/editing against native data.
+7. #47: contextual project/course task capture and direct task-goal links.
 
-## Following milestones (order not yet decided)
+#65 plans mobile access alongside design and audits the native API after #63;
+remote deployment is later. #60 design is in progress, not a completed contract.
+The stack and relationship decisions are recorded there; no database implementation
+has started in this documentation slice.
 
-- Weekly Review V2: guided recalibration and saved review history, as specified
-  in the [product design](weekly-review-v2.md) and
-  [milestone](https://github.com/eivinbingen/life-os-automation/milestone/6).
-  Start/resume/complete and history (#26), Look Back (#27), unresolved work (#28) —
-  delivered as the Clean Up decision queue (PR link added at merge) —
-  metadata hygiene (#29), Review Direction (#30), and Look Ahead (reused #9).
-  Documentation is tracked in #32. The read-only V1 overview is delivered through
-  [PR #25](https://github.com/eivinbingen/life-os-automation/pull/25) as an explicitly
-  accepted transitional screen. Reuse its adapters/service/UI for V2; its temporary
-  `/weekly` route and overdue panel do not complete the revised #9 Ahead slice.
-- Studies: active courses and upcoming academic work (#10) — delivered by the
-  read-only `/studies` overview (PR link added at merge).
+The user already operates without Notion dashboards: another two-week trial is not
+required. Preserve Calendar/YNAB/Sheets ownership, avoid dual writable core stores,
+and keep Notion only as an archive after cutover. Shared organization follows native
+storage; full Studies v2 is not a migration prerequisite.
 
-These are the next agreed milestones after Today v2. Their relative delivery order
-remains undecided. Weekly Review V2 planning precedes parallel implementation;
-start with #26 and settle shared date/history contracts and #8/#15-dependent
-write mappings before assigning independent implementation slices.
+## After migration
 
-## Completed: Finance v1
+- #46 / Studies v2: richer course workspace using the native backend and shared
+  actions. Course notes/materials remain outside Life OS.
+- #65 follow-ups: authenticated hosted mobile web access when ready, with persistent
+  storage/backups. SQLite may remain suitable; PostgreSQL is not automatically required.
+- #41: Finance product discovery; no priority over the current core work.
+- #31: review intelligence, analytics and habits discovery, with no implementation
+  commitment. Habits are not automatically a Weekly Review feature.
+- MCP reuses domain services when needed.
 
-The monthly forecast-versus-actual review moved into the web app (#11). The
-`/finance` page reviews the current month or a selected month: YNAB account
-balances, per-category forecast versus actual, and totals with under/over/on-
-budget differences that read without color. Source failures name the unavailable
-integration instead of showing partial values. The calculation lives in a
-reusable domain service shared with the command-line review, which continues to
-work unchanged, and the YNAB category mapping gained the previously unmapped
-credit card payment category.
-
-## Later direction
-
-- Weekly Review V3/later discovery (#31): health rules, suggestions, inferred
-  importance, weekly priorities and Today integration, analytics, and habits.
-  These are explicitly excluded from V2 and have no delivery commitment.
-
-- Broader task editing, kept separate from read-only context as described in
-  #15.
-- MCP over the same domain services.
-- PostgreSQL only when broader persistence needs justify it. Weekly Review V2
-  history uses a narrow local store and does not authorize PostgreSQL.
-- Hosting, once remote access justifies authentication and operational
-  complexity.
-
-Detailed requirements belong in their own issues; this section keeps only
-direction.
-
-### Make Life OS independently usable
-
-This is the longer-term readiness milestone, rather than "replace Notion backend."
-Build enough of the core operational workflow in the app that the user can stop
-using Life OS pages in Notion. Use roughly two weeks without relying on those
-pages as a practical readiness test; the milestone has no fixed delivery date.
-
-Until then, Notion remains scaffolding and the current source of truth. Avoid
-app-only Notion properties where possible and do not introduce a second writable
-source of truth prematurely. Narrow app-owned persistence such as Weekly Review
-V2 history does not change ownership of core Notion records.
-
-Backend migration is the final step of this milestone: freeze structural changes
-in Notion, migrate the data, make the app/database authoritative, and stop writing
-core Life OS data to Notion. Keep Notion only as an archive or for optional notes
-if desired. See the [architecture transition strategy](architecture.md#notion-transition)
-for the cutover sequence.
-
-## Current Non-Priorities
-
-- Replacing the Notion backend before the app is independently usable.
-- Bidirectional synchronization.
-- Multi-user support.
-- Mobile applications.
-- Advanced AI planning.
-- Migrating all existing data.
+No ongoing bidirectional sync, multi-user product, native mobile app, automatic
+financial actions or broad historical-data migration is currently planned.
