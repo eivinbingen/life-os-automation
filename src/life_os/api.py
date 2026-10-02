@@ -6,6 +6,7 @@ from pydantic import BaseModel, field_validator, model_validator
 from requests import HTTPError, RequestException
 
 from life_os.integrations.notion_projects import GoalLinkError
+from life_os.models.ahead import AheadSummary as DomainAheadSummary
 from life_os.models.calendar import CalendarEvent
 from life_os.models.clean_up import CleanUpSummary as DomainCleanUpSummary
 from life_os.models.courses import (
@@ -46,6 +47,7 @@ from life_os.models.project import ProjectCreate
 from life_os.models.project import ProjectDetail as DomainProjectDetail
 from life_os.models.project import ProjectUpdate as DomainProjectUpdate
 from life_os.models.weekly_review import WeeklyReview as DomainWeeklyReview
+from life_os.services.ahead import get_ahead
 from life_os.services.clean_up import get_clean_up
 from life_os.services.direction import get_direction
 from life_os.services.finance import format_mapping_problems
@@ -53,7 +55,6 @@ from life_os.services.goals import GoalNotFound
 from life_os.services.look_back import get_look_back
 from life_os.services.projects import ProjectNotFound
 from life_os.services.today import get_today
-from life_os.services.week import get_week
 from life_os.services.week import week_start as normalize_week_start
 from life_os.services.weekly_reviews import (
     ReviewConflict,
@@ -413,6 +414,7 @@ def create_app(
     fetch_done_week_tasks: Callable[[date, date], TaskFetchResult] | None = None,
     get_finance: Callable[[str], FinanceReview] | None = None,
     fetch_studies: Callable[[], DomainStudiesOverview] | None = None,
+    fetch_studies_range: Callable[[date, date], DomainStudiesOverview] | None = None,
     fetch_project_detail: Callable[[str], DomainProjectDetail] | None = None,
     fetch_goal_detail: Callable[[str], DomainGoalDetail] | None = None,
     fetch_active_goals: Callable[[], list] | None = None,
@@ -489,6 +491,34 @@ def create_app(
                 raise HTTPException(
                     status_code=502,
                     detail=f"The direction summary could not be read: {error}",
+                ) from error
+
+        # /reviews/weekly/ahead registers before /reviews/weekly/{review_id}:
+        # Starlette matches in registration order, so the path param would
+        # otherwise swallow the literal segment (route-ordering test covers
+        # this).
+        @app.get("/reviews/weekly/ahead")
+        def ahead_endpoint(week_start: date) -> DomainAheadSummary:
+            if fetch_week_events is None or fetch_week_tasks is None:
+                raise HTTPException(
+                    status_code=501,
+                    detail="The ahead summary is not configured on this service.",
+                )
+            try:
+                monday = normalize_week_start(week_start)
+                return get_ahead(
+                    monday,
+                    monday + timedelta(days=6),
+                    monday + timedelta(days=7),
+                    monday + timedelta(days=13),
+                    fetch_week_events,
+                    fetch_week_tasks,
+                    fetch_studies_range,
+                )
+            except (HTTPError, RequestException, ValueError) as error:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"The ahead summary could not be read: {error}",
                 ) from error
 
         @app.get("/reviews/weekly")
@@ -580,15 +610,6 @@ def create_app(
     def today(day: date | None = None):
 
         return get_today(day or date.today(), fetch_events, fetch_tasks)
-
-    if fetch_week_events is not None and fetch_week_tasks is not None:
-
-        @app.get("/week")
-        def week(day: date | None = None):
-
-            return get_week(
-                day or date.today(), fetch_week_events, fetch_week_tasks
-            )
 
     if get_finance is not None:
 

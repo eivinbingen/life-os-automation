@@ -27,7 +27,7 @@ export default async function StudiesPage() {
           <section className="service-error" role="alert" aria-labelledby="studies-error-title">
             <h1 id="studies-error-title">Studies overview is unavailable</h1>
             <p className="service-error-copy">{result.error}</p>
-            <a className="retry-button weekly-retry-link" href="/studies">
+            <a className="retry-button page-retry-link" href="/studies">
               Try again
             </a>
           </section>

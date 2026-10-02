@@ -33,7 +33,7 @@ export default async function ProjectPage({
               : "Project is unavailable"}
           </h1>
           <p className="service-error-copy">{result.error.message}</p>
-          <a className="retry-button weekly-retry-link" href={`/projects/${id}`}>
+          <a className="retry-button page-retry-link" href={`/projects/${id}`}>
             Try again
           </a>
         </section>

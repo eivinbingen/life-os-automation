@@ -29,7 +29,7 @@ export default async function GoalPage({
               : "Goal is unavailable"}
           </h1>
           <p className="service-error-copy">{result.error.message}</p>
-          <a className="retry-button weekly-retry-link" href={`/goals/${id}`}>
+          <a className="retry-button page-retry-link" href={`/goals/${id}`}>
             Try again
           </a>
         </section>

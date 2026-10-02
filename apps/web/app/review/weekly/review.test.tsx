@@ -1,7 +1,13 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CleanUpSummary, DirectionSummary, LookBackSummary, ReviewRecord } from "./review-actions";
+import type {
+  AheadSummary,
+  CleanUpSummary,
+  DirectionSummary,
+  LookBackSummary,
+  ReviewRecord,
+} from "./review-actions";
 import { ReviewBoard } from "./review-board";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -88,8 +94,14 @@ const completed: ReviewRecord = {
 const saveReviewDraft = vi.hoisted(() => vi.fn());
 const completeReview = vi.hoisted(() => vi.fn());
 const fetchLookBackAction = vi.hoisted(() => vi.fn());
+const fetchAheadAction = vi.hoisted(() => vi.fn());
 const updateTaskAction = vi.hoisted(() => vi.fn());
-vi.mock("../../actions", () => ({ updateTask: updateTaskAction, updateTaskDone: updateTaskAction }));
+const createTaskAction = vi.hoisted(() => vi.fn());
+vi.mock("../../actions", () => ({
+  updateTask: updateTaskAction,
+  updateTaskDone: updateTaskAction,
+  createTask: createTaskAction,
+}));
 
 const createGoalAction = vi.hoisted(() => vi.fn());
 const completeGoalAction = vi.hoisted(() => vi.fn());
@@ -106,7 +118,13 @@ vi.mock("../../projects-actions", async (importOriginal) => {
 
 vi.mock("./review-actions", async () => {
   const actual = await vi.importActual<typeof import("./review-actions")>("./review-actions");
-  return { ...actual, saveReviewDraft, completeReview, fetchLookBack: fetchLookBackAction };
+  return {
+    ...actual,
+    saveReviewDraft,
+    completeReview,
+    fetchLookBack: fetchLookBackAction,
+    fetchAhead: fetchAheadAction,
+  };
 });
 
 function renderBoard() {
@@ -790,5 +808,510 @@ describe("Direction stage", () => {
     expect(screen.queryByText("Complete Goal")).toBeNull();
     expect(screen.queryByText("Add Project")).toBeNull();
     expect(screen.queryByText("Add Goal")).toBeNull();
+  });
+});
+
+describe("Ahead stage", () => {
+  const aheadSummary: AheadSummary = {
+    week_start: "2026-09-14",
+    week_end: "2026-09-20",
+    ahead_start: "2026-09-21",
+    ahead_end: "2026-09-27",
+    timezone: "Europe/Zurich",
+    captured_at: "2026-09-21T09:00:00+02:00",
+    items: [
+      {
+        id: "event:e2:2026-09-22",
+        kind: "event",
+        day: "2026-09-22",
+        name: "Conference",
+        when: "2026-09-21T00:00:00+02:00",
+        task_id: null,
+        project_id: null,
+        project_name: null,
+        course_id: null,
+        course_name: null,
+        scheduled: null,
+        due: null,
+        event_id: "e2",
+        start: "2026-09-21T00:00:00+02:00",
+        end: "2026-09-23T00:00:00+02:00",
+        all_day: true,
+        continues: true,
+      },
+      {
+        id: "event:e1:2026-09-22",
+        kind: "event",
+        day: "2026-09-22",
+        name: "Team standup",
+        when: "2026-09-22T09:00:00+02:00",
+        task_id: null,
+        project_id: null,
+        project_name: null,
+        course_id: null,
+        course_name: null,
+        scheduled: null,
+        due: null,
+        event_id: "e1",
+        start: "2026-09-22T09:00:00+02:00",
+        end: "2026-09-22T09:30:00+02:00",
+        all_day: false,
+        continues: false,
+      },
+      {
+        id: "t1:scheduled",
+        kind: "scheduled",
+        day: "2026-09-22",
+        name: "Prepare slides",
+        when: "2026-09-22T14:00:00",
+        task_id: "t1",
+        project_id: "project-cf",
+        project_name: "Corporate Finance",
+        course_id: null,
+        course_name: null,
+        scheduled: "2026-09-22T14:00:00",
+        due: "2026-09-24",
+        event_id: null,
+        start: null,
+        end: null,
+        all_day: false,
+        continues: false,
+      },
+      {
+        id: "t1:due",
+        kind: "due",
+        day: "2026-09-24",
+        name: "Prepare slides",
+        when: "2026-09-24",
+        task_id: "t1",
+        project_id: "project-cf",
+        project_name: "Corporate Finance",
+        course_id: null,
+        course_name: null,
+        scheduled: "2026-09-22T14:00:00",
+        due: "2026-09-24",
+        event_id: null,
+        start: null,
+        end: null,
+        all_day: false,
+        continues: false,
+      },
+      {
+        id: "c1:exam",
+        kind: "assessment",
+        day: "2026-09-24",
+        name: "Exam / Final Deadline",
+        when: "2026-09-24",
+        task_id: null,
+        project_id: null,
+        project_name: null,
+        course_id: "c1",
+        course_name: "Linear Algebra",
+        scheduled: null,
+        due: null,
+        event_id: null,
+        start: null,
+        end: null,
+        all_day: false,
+        continues: false,
+      },
+    ],
+    exceptions: [
+      {
+        task_id: "t2",
+        name: "Submit essay",
+        due: "2026-09-25",
+        project_id: null,
+        project_name: null,
+      },
+    ],
+    statuses: [],
+    warnings: [],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    saveReviewDraft.mockResolvedValue({ ok: true, review: draft });
+    fetchAheadAction.mockResolvedValue({ ok: true, summary: aheadSummary });
+    updateTaskAction.mockResolvedValue({ ok: true });
+    createTaskAction.mockResolvedValue({ ok: true, name: "New task" });
+  });
+
+  async function renderAheadBoard(
+    aheadProp:
+      | { ok: true; summary: typeof aheadSummary }
+      | { ok: false; error: string } = { ok: true, summary: aheadSummary },
+  ) {
+    const user = userEvent.setup();
+    const view = render(
+      <ReviewBoard
+        initialReview={draft}
+        history={[completed]}
+        lookBack={{ ok: true, summary }}
+        ahead={aheadProp}
+      />,
+    );
+    // The Ahead section starts collapsed; expand it (look-back starts
+    // open, so Expand buttons are clean-up, direction, ahead in order).
+    const expandButtons = screen.getAllByText("Expand");
+    await user.click(expandButtons[2]);
+    return { user, container: view.container };
+  }
+
+  it("renders day groups with labeled rows in chronological order", async () => {
+    const { container } = await renderAheadBoard();
+
+    const groups = container.querySelectorAll(".ahead-day-group");
+    expect(groups.length).toBe(2);
+    expect(groups[0].textContent).toContain("22 September 2026");
+    expect(groups[1].textContent).toContain("24 September 2026");
+
+    // Within the first day: all-day, timed event, then the timed task.
+    const firstDayRows = groups[0].querySelectorAll(".review-queue-name");
+    expect(Array.from(firstDayRows).map((row) => row.textContent)).toEqual([
+      "Conference",
+      "Team standup",
+      "Prepare slides",
+    ]);
+    expect(groups[0].textContent).toContain("09:00–09:30");
+    // The second day holds both clearly labeled rows for the same task
+    // plus the course assessment.
+    expect(Array.from(groups[1].querySelectorAll(".review-queue-name")).map((row) => row.textContent)).toEqual([
+      "Prepare slides",
+      "Exam / Final Deadline",
+    ]);
+
+    expect(screen.getAllByText("Event").length).toBe(2);
+    expect(screen.getAllByText("Scheduled").length).toBe(1);
+    expect(screen.getAllByText("Due").length).toBe(1);
+    expect(screen.getByText("Assessment")).toBeTruthy();
+    expect(screen.getByText("Linear Algebra")).toBeTruthy();
+  });
+
+  it("preserves all-day and ongoing event semantics", async () => {
+    await renderAheadBoard();
+
+    expect(screen.getByText("All day")).toBeTruthy();
+    expect(screen.getByText("Ongoing")).toBeTruthy();
+  });
+
+  it("labels a continued event with its remaining time, never a wrong same-day range", async () => {
+    // Chronological order matters: the grouping walks items in sequence.
+    const [conference, standup, slidesScheduled, slidesDue, exam] = aheadSummary.items;
+    const nightShift = {
+      // Started 23:00 the previous evening and ends 01:00 on this day; a
+      // "23:00–01:00" range would read as a same-day slot that never exists.
+      id: "event:e3:2026-09-23",
+      kind: "event" as const,
+      day: "2026-09-23",
+      name: "Night shift",
+      when: "2026-09-22T23:00:00+02:00",
+      task_id: null,
+      project_id: null,
+      project_name: null,
+      course_id: null,
+      course_name: null,
+      scheduled: null,
+      due: null,
+      event_id: "e3",
+      start: "2026-09-22T23:00:00+02:00",
+      end: "2026-09-23T01:00:00+02:00",
+      all_day: false,
+      continues: true,
+    };
+    const retreat = {
+      // Spans several days; on a middle day only the end is worth labeling.
+      id: "event:e4:2026-09-24",
+      kind: "event" as const,
+      day: "2026-09-24",
+      name: "Team retreat",
+      when: "2026-09-23T09:00:00+02:00",
+      task_id: null,
+      project_id: null,
+      project_name: null,
+      course_id: null,
+      course_name: null,
+      scheduled: null,
+      due: null,
+      event_id: "e4",
+      start: "2026-09-23T09:00:00+02:00",
+      end: "2026-09-25T17:00:00+02:00",
+      all_day: false,
+      continues: true,
+    };
+    await renderAheadBoard({
+      ok: true,
+      summary: {
+        ...aheadSummary,
+        items: [conference, standup, slidesScheduled, nightShift, slidesDue, retreat, exam],
+      },
+    });
+
+    const nightShiftRow = screen.getByText("Night shift").closest(".review-queue-row");
+    expect(nightShiftRow?.textContent).toContain("until 01:00");
+    expect(nightShiftRow?.textContent).not.toContain("23:00–01:00");
+
+    const retreatRow = screen.getByText("Team retreat").closest(".review-queue-row");
+    expect(retreatRow?.textContent).toContain("until 25 Sept");
+  });
+
+  it("cross-references the other date on scheduled and due rows", async () => {
+    const { container } = await renderAheadBoard();
+
+    const groups = container.querySelectorAll(".ahead-day-group");
+    expect(groups[0].textContent).toContain("Due 24 Sept");
+    expect(groups[1].textContent).toContain("Scheduled 22 Sept · 14:00");
+  });
+
+  it("shows planning exceptions with the objective definition", async () => {
+    await renderAheadBoard();
+
+    expect(screen.getByText("Planning exceptions")).toBeTruthy();
+    expect(screen.getByText(/Deadlines in the ahead week with no scheduled work date/)).toBeTruthy();
+    expect(screen.getByText("Submit essay")).toBeTruthy();
+    expect(screen.getByText("No scheduled date")).toBeTruthy();
+    expect(screen.getByText("Due 25 Sept")).toBeTruthy();
+  });
+
+  it("distinguishes an empty timeline and empty exceptions from failure", async () => {
+    await renderAheadBoard({
+      ok: true,
+      summary: {
+        ...aheadSummary,
+        items: [],
+        exceptions: [],
+        statuses: [],
+      },
+    });
+    expect(screen.getByText(/Nothing scheduled, due, or on the calendar/)).toBeTruthy();
+    expect(screen.getByText("No deadlines without scheduled work.")).toBeTruthy();
+
+    cleanup();
+
+    await renderAheadBoard({ ok: false, error: "The Life OS service could not be reached." });
+    expect(screen.getByText(/could not be reached/)).toBeTruthy();
+    expect(screen.getByText("Try again")).toBeTruthy();
+  });
+
+  it("names an unavailable source while keeping the timeline", async () => {
+    await renderAheadBoard({
+      ok: true,
+      summary: {
+        ...aheadSummary,
+        statuses: [
+          { name: "Studies", ok: false, error: "Studies context is not configured on this service." },
+        ],
+      },
+    });
+
+    expect(screen.getByText(/Studies is unavailable/)).toBeTruthy();
+    expect(screen.getAllByText("Prepare slides").length).toBeGreaterThan(0);
+    expect(screen.getByText("Team standup")).toBeTruthy();
+  });
+
+  it("keeps an unknown exceptions state when the task read failed", async () => {
+    await renderAheadBoard({
+      ok: true,
+      summary: {
+        ...aheadSummary,
+        items: [],
+        exceptions: [],
+        statuses: [{ name: "Notion", ok: false, error: "notion down" }],
+      },
+    });
+
+    expect(screen.getByText(/Notion is unavailable/)).toBeTruthy();
+    // The exceptions queue is unknown, not known-empty.
+    expect(screen.queryByText("No deadlines without scheduled work.")).toBeNull();
+  });
+
+  it("reschedules a task in place, keeping due, and refreshes the timeline", async () => {
+    const { user } = await renderAheadBoard();
+
+    await user.click(screen.getAllByText("Reschedule")[0]);
+    const dialog = screen.getByRole("dialog", { name: "Reschedule task" });
+    expect(within(dialog).getByText(/Changes only Scheduled/)).toBeTruthy();
+    expect(within(dialog).getByText(/Due 24 Sept is kept/)).toBeTruthy();
+
+    const input = within(dialog).getByLabelText("Scheduled");
+    fireEvent.change(input, { target: { value: "2026-09-29" } });
+    await user.click(within(dialog).getByText("Save"));
+
+    expect(updateTaskAction).toHaveBeenCalledWith("t1", { scheduled: "2026-09-29" });
+    await waitFor(() => {
+      expect(fetchAheadAction).toHaveBeenCalledWith("2026-09-14");
+    });
+  });
+
+  it("keeps the dialog and entered date when the reschedule fails", async () => {
+    const { user } = await renderAheadBoard();
+    updateTaskAction.mockResolvedValue({ ok: false, error: "Notion could not be reached." });
+
+    await user.click(screen.getAllByText("Reschedule")[0]);
+    const dialog = screen.getByRole("dialog", { name: "Reschedule task" });
+    const input = within(dialog).getByLabelText("Scheduled");
+    fireEvent.change(input, { target: { value: "2026-09-29" } });
+    await user.click(within(dialog).getByText("Save"));
+
+    // The task appears as two rows (scheduled and due), so the per-task error
+    // is surfaced on both.
+    expect((await screen.findAllByText("Notion could not be reached.")).length).toBeGreaterThan(0);
+    expect((within(dialog).getByLabelText("Scheduled") as HTMLInputElement).value).toBe("2026-09-29");
+  });
+
+  it("reschedules from the planning exceptions row with an empty seed", async () => {
+    const { user } = await renderAheadBoard();
+
+    // Timeline rows come first; the exception row is last.
+    await user.click(screen.getAllByText("Reschedule")[2]);
+    const dialog = screen.getByRole("dialog", { name: "Reschedule task" });
+    expect((within(dialog).getByLabelText("Scheduled") as HTMLInputElement).value).toBe("");
+
+    const input = within(dialog).getByLabelText("Scheduled");
+    fireEvent.change(input, { target: { value: "2026-09-23" } });
+    await user.click(within(dialog).getByText("Save"));
+
+    expect(updateTaskAction).toHaveBeenCalledWith("t2", { scheduled: "2026-09-23" });
+  });
+
+  it("adds a task seeded with the ahead start and refreshes the timeline", async () => {
+    const { user } = await renderAheadBoard();
+
+    await user.click(screen.getByText("+ Add task"));
+    await user.type(screen.getByLabelText("Task name"), "Book dentist");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+
+    // Scheduled defaults to the ahead week's first day; Due stays empty.
+    await waitFor(() => {
+      expect(createTaskAction).toHaveBeenCalledWith("Book dentist", "2026-09-21", null);
+    });
+    await waitFor(() => {
+      expect(fetchAheadAction).toHaveBeenCalledWith("2026-09-14");
+    });
+  });
+
+  it("keeps the entered name and shows the error when adding fails", async () => {
+    const { user } = await renderAheadBoard();
+    createTaskAction.mockResolvedValue({ ok: false, error: "Notion could not be reached." });
+
+    await user.click(screen.getByText("+ Add task"));
+    await user.type(screen.getByLabelText("Task name"), "Book dentist");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+
+    expect(await screen.findByText("Notion could not be reached.")).toBeTruthy();
+    expect((screen.getByLabelText("Task name") as HTMLInputElement).value).toBe("Book dentist");
+  });
+
+  it("clears a cancelled capture so reopening starts fresh", async () => {
+    const { user } = await renderAheadBoard();
+
+    await user.click(screen.getByText("+ Add task"));
+    await user.type(screen.getByLabelText("Task name"), "Book dentist");
+    fireEvent.change(screen.getByLabelText("Due"), { target: { value: "2026-09-25" } });
+    await user.click(screen.getByText("Cancel"));
+
+    // The form closes and nothing typed into the cancelled capture resurfaces.
+    expect(screen.queryByLabelText("Task name")).toBeNull();
+
+    await user.click(screen.getByText("+ Add task"));
+    expect((screen.getByLabelText("Task name") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Due") as HTMLInputElement).value).toBe("");
+    // Scheduled is reseeded with the ahead week's first day, not a stale draft.
+    expect((screen.getByLabelText("Scheduled") as HTMLInputElement).value).toBe("2026-09-21");
+  });
+
+  it("completes a task from the timeline and refreshes", async () => {
+    const { user } = await renderAheadBoard();
+
+    await user.click(screen.getAllByText("Complete")[0]);
+
+    await waitFor(() => {
+      expect(updateTaskAction).toHaveBeenCalledWith("t1", { done: true });
+    });
+    await waitFor(() => {
+      expect(fetchAheadAction).toHaveBeenCalledWith("2026-09-14");
+    });
+  });
+
+  it("queues a refetch triggered while one is in flight instead of dropping it", async () => {
+    // The refetch hangs until released, so the second completion lands while
+    // the first refresh is still pending.
+    let resolveFetch: (value: { ok: true; summary: AheadSummary }) => void = () => {};
+    fetchAheadAction.mockImplementation(
+      () =>
+        new Promise<{ ok: true; summary: AheadSummary }>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const { user } = await renderAheadBoard();
+
+    // Complete buttons in DOM order: the t1 timeline rows first, then the
+    // t2 planning exception — two different tasks, so neither is blocked.
+    await user.click(screen.getAllByText("Complete")[0]);
+    await user.click(screen.getAllByText("Complete")[2]);
+
+    // The first completion refetched; the second must not have started a
+    // parallel fetch — it is queued behind the in-flight one.
+    await waitFor(() => {
+      expect(fetchAheadAction).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      resolveFetch({ ok: true, summary: aheadSummary });
+    });
+
+    // The queued follow-up now runs, so both completions are reflected.
+    await waitFor(() => {
+      expect(fetchAheadAction).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("hides reschedule actions on a completed review", async () => {
+    const user = userEvent.setup();
+    render(
+      <ReviewBoard
+        initialReview={completed}
+        history={[]}
+        ahead={{ ok: true, summary: aheadSummary }}
+      />,
+    );
+    const expandButtons = screen.getAllByText("Expand");
+    await user.click(expandButtons[2]);
+
+    expect(screen.getAllByText("Prepare slides").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Reschedule")).toBeNull();
+    expect(screen.queryByText("Complete")).toBeNull();
+    expect(screen.queryByText("+ Add task")).toBeNull();
+  });
+
+  it("shows a neutral note for a completed review without live data", async () => {
+    render(<ReviewBoard initialReview={completed} history={[]} ahead={null} />);
+    const expandButtons = screen.getAllByText("Expand");
+    await userEvent.setup().click(expandButtons[2]);
+
+    expect(screen.getByText(/live ahead timeline is unavailable for completed reviews/)).toBeTruthy();
+    expect(fetchAheadAction).not.toHaveBeenCalled();
+  });
+
+  it("retries a failed fetch without losing typed wins", async () => {
+    const user = userEvent.setup();
+    render(
+      <ReviewBoard
+        initialReview={draft}
+        history={[]}
+        ahead={{ ok: false, error: "The ahead timeline could not be loaded. Please try again." }}
+      />,
+    );
+    const expandButtons = screen.getAllByText("Expand");
+    await user.click(expandButtons[2]);
+
+    const wins = screen.getByLabelText("Wins");
+    await user.type(wins, "Typed before retry");
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+
+    await waitFor(() => {
+      expect(fetchAheadAction).toHaveBeenCalledWith("2026-09-14");
+    });
+    expect((screen.getByLabelText("Wins") as HTMLTextAreaElement).value).toBe("Typed before retry");
   });
 });
