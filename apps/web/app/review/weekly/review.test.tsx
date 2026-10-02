@@ -96,7 +96,12 @@ const completeReview = vi.hoisted(() => vi.fn());
 const fetchLookBackAction = vi.hoisted(() => vi.fn());
 const fetchAheadAction = vi.hoisted(() => vi.fn());
 const updateTaskAction = vi.hoisted(() => vi.fn());
-vi.mock("../../actions", () => ({ updateTask: updateTaskAction, updateTaskDone: updateTaskAction }));
+const createTaskAction = vi.hoisted(() => vi.fn());
+vi.mock("../../actions", () => ({
+  updateTask: updateTaskAction,
+  updateTaskDone: updateTaskAction,
+  createTask: createTaskAction,
+}));
 
 const createGoalAction = vi.hoisted(() => vi.fn());
 const completeGoalAction = vi.hoisted(() => vi.fn());
@@ -929,6 +934,7 @@ describe("Ahead stage", () => {
     saveReviewDraft.mockResolvedValue({ ok: true, review: draft });
     fetchAheadAction.mockResolvedValue({ ok: true, summary: aheadSummary });
     updateTaskAction.mockResolvedValue({ ok: true });
+    createTaskAction.mockResolvedValue({ ok: true, name: "New task" });
   });
 
   async function renderAheadBoard(
@@ -1108,6 +1114,47 @@ describe("Ahead stage", () => {
     expect(updateTaskAction).toHaveBeenCalledWith("t2", { scheduled: "2026-09-23" });
   });
 
+  it("adds a task seeded with the ahead start and refreshes the timeline", async () => {
+    const { user } = await renderAheadBoard();
+
+    await user.click(screen.getByText("+ Add task"));
+    await user.type(screen.getByLabelText("Task name"), "Book dentist");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+
+    // Scheduled defaults to the ahead week's first day; Due stays empty.
+    await waitFor(() => {
+      expect(createTaskAction).toHaveBeenCalledWith("Book dentist", "2026-09-21", null);
+    });
+    await waitFor(() => {
+      expect(fetchAheadAction).toHaveBeenCalledWith("2026-09-14");
+    });
+  });
+
+  it("keeps the entered name and shows the error when adding fails", async () => {
+    const { user } = await renderAheadBoard();
+    createTaskAction.mockResolvedValue({ ok: false, error: "Notion could not be reached." });
+
+    await user.click(screen.getByText("+ Add task"));
+    await user.type(screen.getByLabelText("Task name"), "Book dentist");
+    await user.click(screen.getByRole("button", { name: "Add task" }));
+
+    expect(await screen.findByText("Notion could not be reached.")).toBeTruthy();
+    expect((screen.getByLabelText("Task name") as HTMLInputElement).value).toBe("Book dentist");
+  });
+
+  it("completes a task from the timeline and refreshes", async () => {
+    const { user } = await renderAheadBoard();
+
+    await user.click(screen.getAllByText("Complete")[0]);
+
+    await waitFor(() => {
+      expect(updateTaskAction).toHaveBeenCalledWith("t1", { done: true });
+    });
+    await waitFor(() => {
+      expect(fetchAheadAction).toHaveBeenCalledWith("2026-09-14");
+    });
+  });
+
   it("hides reschedule actions on a completed review", async () => {
     const user = userEvent.setup();
     render(
@@ -1122,6 +1169,8 @@ describe("Ahead stage", () => {
 
     expect(screen.getAllByText("Prepare slides").length).toBeGreaterThan(0);
     expect(screen.queryByText("Reschedule")).toBeNull();
+    expect(screen.queryByText("Complete")).toBeNull();
+    expect(screen.queryByText("+ Add task")).toBeNull();
   });
 
   it("shows a neutral note for a completed review without live data", async () => {

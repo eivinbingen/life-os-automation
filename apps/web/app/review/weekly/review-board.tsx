@@ -42,6 +42,14 @@ function loadReviewActions() {
   return reviewActionsPromise;
 }
 
+// Task actions (reschedule, complete, create) come from the shared app
+// module; cached for the same reason as the review actions.
+let appActionsPromise: Promise<typeof import("../../actions")> | null = null;
+function loadAppActions() {
+  appActionsPromise ??= import("../../actions");
+  return appActionsPromise;
+}
+
 const aheadTimeFormatter = new Intl.DateTimeFormat("en-GB", {
   hour: "2-digit",
   minute: "2-digit",
@@ -205,7 +213,7 @@ function CleanUpBody({
     setPendingIds((prev) => new Set([...prev, id]));
     setActionError(null);
     try {
-      const { updateTask } = await import("../../actions");
+      const { updateTask } = await loadAppActions();
       const result = await updateTask(id, edits);
       if (result.ok) {
         setBacklogConfirmIds((prev) => new Set([...prev].filter((x) => x !== id)));
@@ -780,6 +788,12 @@ function AheadBody({
     scheduled: string | null;
     due: string | null;
   } | null>(null);
+  const [captureOpen, setCaptureOpen] = useState(false);
+  const [captureName, setCaptureName] = useState("");
+  const [captureScheduled, setCaptureScheduled] = useState("");
+  const [captureDue, setCaptureDue] = useState("");
+  const [capturePending, setCapturePending] = useState(false);
+  const [captureError, setCaptureError] = useState<string | null>(null);
 
   if (!live) {
     // Nothing was fetched (completed review): neutral note, not an error.
@@ -815,7 +829,7 @@ function AheadBody({
     setPendingIds((prev) => new Set([...prev, id]));
     setActionError(null);
     try {
-      const { updateTask } = await import("../../actions");
+      const { updateTask } = await loadAppActions();
       const result = await updateTask(id, edits);
       if (result.ok) {
         setReschedule((current) => (current && current.id === id ? null : current));
@@ -830,8 +844,42 @@ function AheadBody({
     }
   };
 
-  // The service sorts items chronologically; grouping by day is a
-  // rendering concern.
+  // Opening the capture seeds Scheduled with the ahead week's first day:
+  // a task planned here belongs to the coming week unless changed.
+  function openCapture() {
+    setCaptureScheduled(summary.ahead_start);
+    setCaptureError(null);
+    setCaptureOpen(true);
+  }
+
+  function closeCapture() {
+    if (capturePending) return;
+    setCaptureOpen(false);
+    setCaptureError(null);
+  }
+
+  const submitCapture = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (capturePending || !captureName.trim()) return;
+    setCapturePending(true);
+    setCaptureError(null);
+    try {
+      const { createTask } = await loadAppActions();
+      const result = await createTask(captureName.trim(), captureScheduled || null, captureDue || null);
+      if (result.ok) {
+        setCaptureOpen(false);
+        setCaptureName("");
+        setCaptureDue("");
+        onActionDone();
+      } else {
+        setCaptureError(result.error);
+      }
+    } catch {
+      setCaptureError("The task could not be created. Try again.");
+    } finally {
+      setCapturePending(false);
+    }
+  };
   const days: { day: string; items: AheadItem[] }[] = [];
   for (const item of summary.items) {
     const current = days[days.length - 1];
@@ -852,6 +900,65 @@ function AheadBody({
 
   return (
     <div className="review-queue-wrap">
+      {!isCompleted && !captureOpen && (
+        <button type="button" className="add-task-button" onClick={openCapture}>
+          + Add task
+        </button>
+      )}
+      {captureOpen && (
+        <form className="ahead-capture" onSubmit={submitCapture} aria-label="Add a task">
+          <label className="review-field">
+            <span>Task name</span>
+            <input
+              type="text"
+              value={captureName}
+              disabled={capturePending}
+              placeholder="What needs doing?"
+              onChange={(event) => setCaptureName(event.target.value)}
+            />
+          </label>
+          <label className="review-field">
+            <span>Scheduled</span>
+            <input
+              type="date"
+              value={captureScheduled}
+              disabled={capturePending}
+              onChange={(event) => setCaptureScheduled(event.target.value)}
+            />
+          </label>
+          <label className="review-field">
+            <span>Due</span>
+            <input
+              type="date"
+              value={captureDue}
+              disabled={capturePending}
+              onChange={(event) => setCaptureDue(event.target.value)}
+            />
+          </label>
+          <div className="review-queue-actions">
+            <button
+              type="submit"
+              className="review-queue-complete"
+              disabled={capturePending || !captureName.trim()}
+            >
+              {capturePending ? "Adding…" : "Add task"}
+            </button>
+            <button
+              type="button"
+              className="review-queue-confirm-no"
+              onClick={closeCapture}
+              disabled={capturePending}
+            >
+              Cancel
+            </button>
+          </div>
+          {captureError && (
+            <p className="review-action-error" role="alert">
+              {captureError}
+            </p>
+          )}
+        </form>
+      )}
       {failed.length > 0 ? (
         <div className="integration-alert" role="status">
           <span className="alert-symbol" aria-hidden="true">!</span>
@@ -934,6 +1041,14 @@ function AheadBody({
                   </div>
                   {!isCompleted && item.task_id && (
                     <div className="review-queue-actions">
+                      <button
+                        type="button"
+                        className="review-queue-complete"
+                        disabled={pendingIds.has(item.task_id)}
+                        onClick={() => item.task_id && void runAction(item.task_id, { done: true })}
+                      >
+                        {pendingIds.has(item.task_id) ? "Working…" : "Complete"}
+                      </button>
                       {rescheduleButton(item.task_id, item.scheduled, item.due)}
                     </div>
                   )}
@@ -977,6 +1092,14 @@ function AheadBody({
                 </div>
                 {!isCompleted && (
                   <div className="review-queue-actions">
+                    <button
+                      type="button"
+                      className="review-queue-complete"
+                      disabled={pendingIds.has(exception.task_id)}
+                      onClick={() => void runAction(exception.task_id, { done: true })}
+                    >
+                      {pendingIds.has(exception.task_id) ? "Working…" : "Complete"}
+                    </button>
                     {rescheduleButton(exception.task_id, null, exception.due)}
                   </div>
                 )}
@@ -1520,8 +1643,8 @@ export function ReviewBoard({
         />
         <p className="review-prompt">
           Next week ({formatDayRange(review.ahead_start, review.ahead_end)}) is paired to the
-          reviewed week. Rescheduling changes only Scheduled and keeps Due; the calendar
-          stays read-only.
+          reviewed week. Rescheduling changes only Scheduled and keeps Due; new tasks and
+          completions write to Notion; the calendar stays read-only.
         </p>
       </ReviewSection>
 
