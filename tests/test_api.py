@@ -201,14 +201,25 @@ def test_update_task_builds_narrow_domain_update(monkeypatch):
     response = client.patch("/tasks/task-1", json={"done": True})
     assert response.status_code == 200
 
+    # Assign a project; then clear the link explicitly.
+    response = client.patch("/tasks/task-1", json={"project_id": "p1"})
+    assert response.status_code == 200
+    response = client.patch("/tasks/task-1", json={"project_id": None})
+    assert response.status_code == 200
+
     assert updates == [
         ("task-1", TaskUpdate(scheduled=date(2026, 9, 25)), None),
         ("task-1", TaskUpdate(due=None), None),
         ("task-1", TaskUpdate(), True),
+        ("task-1", TaskUpdate(project_id="p1"), None),
+        ("task-1", TaskUpdate(project_id=None), None),
     ]
     # The reschedule update leaves name and due as the untouched sentinel.
     assert updates[0][1].name is UNSET
     assert updates[0][1].due is UNSET
+    # The project assignment leaves the dates untouched too.
+    assert updates[3][1].scheduled is UNSET
+    assert updates[3][1].due is UNSET
 
 
 def test_update_task_rejects_blank_name():
@@ -245,6 +256,27 @@ def test_update_task_rejects_null_name():
     response = client.patch("/tasks/task-1", json={"name": None})
 
     assert response.status_code == 422
+
+
+def test_update_task_rejects_blank_project_id():
+    """A blank id would become a Notion relation write and surface as a
+    schema-blaming write error; it is rejected up front instead."""
+
+    def fetch_events(day):
+        return []
+
+    def fetch_tasks(day):
+        return []
+
+    def update(task_id, update, done):
+        return True
+
+    client = TestClient(create_app(fetch_events, fetch_tasks, update))
+
+    response = client.patch("/tasks/task-1", json={"project_id": "   "})
+
+    assert response.status_code == 422
+    assert "Project id must not be blank" in response.json()["detail"][0]["msg"]
 
 
 def test_update_task_rejects_null_done():

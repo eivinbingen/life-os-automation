@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useState } from "react";
+
+import { ModalDialog } from "./modal-dialog";
 
 // The finite status options from the inspected Goals schema; the backend
 // validates the same set. Kept here because goal-actions.ts is a
@@ -38,7 +40,6 @@ export function GoalForm({
   onClose: () => void;
 }) {
   const formId = useId();
-  const dialogRef = useRef<HTMLDialogElement>(null);
 
   // The form remounts per open, so plain constants capture the seed.
   const seed = initial ?? {};
@@ -49,13 +50,6 @@ export function GoalForm({
   const [name, setName] = useState(initialName);
   const [status, setStatus] = useState(initialStatus);
   const [targetDate, setTargetDate] = useState(initialTarget);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    dialog.showModal();
-    return () => dialog.close();
-  }, []);
 
   const nameBlank = name.trim().length === 0;
   const saveDisabled = pending || nameBlank;
@@ -87,14 +81,10 @@ export function GoalForm({
   }
 
   return (
-    <dialog
-      ref={dialogRef}
+    <ModalDialog
       className="task-edit-dialog"
-      aria-labelledby={`${formId}-heading`}
-      onCancel={(event) => {
-        event.preventDefault();
-        close();
-      }}
+      ariaLabelledBy={`${formId}-heading`}
+      onClose={close}
     >
       <div className="task-edit-body">
         <div className="task-edit-heading">
@@ -198,6 +188,6 @@ export function GoalForm({
           </div>
         </form>
       </div>
-    </dialog>
+    </ModalDialog>
   );
 }

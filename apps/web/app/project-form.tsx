@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useState } from "react";
+
+import { ModalDialog } from "./modal-dialog";
 
 // The finite status options from the inspected Projects schema; the backend
 // validates the same set. Kept here because projects-actions.ts is a
@@ -51,7 +53,6 @@ export function ProjectForm({
   onClose: () => void;
 }) {
   const formId = useId();
-  const dialogRef = useRef<HTMLDialogElement>(null);
 
   // The form remounts per open, so plain constants capture the seed.
   const seed = initial ?? {};
@@ -74,13 +75,6 @@ export function ProjectForm({
   const [status, setStatus] = useState(initialStatus);
   const [goalId, setGoalId] = useState(initialGoalId);
   const [deadline, setDeadline] = useState(initialDeadline);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    dialog.showModal();
-    return () => dialog.close();
-  }, []);
 
   const nameBlank = name.trim().length === 0;
   const saveDisabled = pending || nameBlank;
@@ -114,14 +108,10 @@ export function ProjectForm({
   }
 
   return (
-    <dialog
-      ref={dialogRef}
+    <ModalDialog
       className="task-edit-dialog"
-      aria-labelledby={`${formId}-heading`}
-      onCancel={(event) => {
-        event.preventDefault();
-        close();
-      }}
+      ariaLabelledBy={`${formId}-heading`}
+      onClose={close}
     >
       <div className="task-edit-body">
         <div className="task-edit-heading">
@@ -256,6 +246,6 @@ export function ProjectForm({
           </div>
         </form>
       </div>
-    </dialog>
+    </ModalDialog>
   );
 }

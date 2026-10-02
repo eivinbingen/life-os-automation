@@ -5,6 +5,7 @@ import type {
   AheadSummary,
   CleanUpSummary,
   DirectionSummary,
+  HygieneItem,
   LookBackSummary,
   ReviewRecord,
 } from "./review-actions";
@@ -94,9 +95,11 @@ const completed: ReviewRecord = {
 const saveReviewDraft = vi.hoisted(() => vi.fn());
 const completeReview = vi.hoisted(() => vi.fn());
 const fetchLookBackAction = vi.hoisted(() => vi.fn());
+const fetchCleanUpAction = vi.hoisted(() => vi.fn());
 const fetchAheadAction = vi.hoisted(() => vi.fn());
 const updateTaskAction = vi.hoisted(() => vi.fn());
 const createTaskAction = vi.hoisted(() => vi.fn());
+const fetchAssignableProjectsAction = vi.hoisted(() => vi.fn());
 vi.mock("../../actions", () => ({
   updateTask: updateTaskAction,
   updateTaskDone: updateTaskAction,
@@ -113,7 +116,11 @@ vi.mock("../../goal-actions", () => ({
 }));
 vi.mock("../../projects-actions", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../projects-actions")>();
-  return { ...actual, createProject: createProjectAction };
+  return {
+    ...actual,
+    createProject: createProjectAction,
+    fetchAssignableProjects: fetchAssignableProjectsAction,
+  };
 });
 
 vi.mock("./review-actions", async () => {
@@ -123,6 +130,7 @@ vi.mock("./review-actions", async () => {
     saveReviewDraft,
     completeReview,
     fetchLookBack: fetchLookBackAction,
+    fetchCleanUp: fetchCleanUpAction,
     fetchAhead: fetchAheadAction,
   };
 });
@@ -472,12 +480,26 @@ describe("Clean Up queue", () => {
     ],
     statuses: [{ name: "Notion", ok: true, error: null }],
     warnings: [],
+    hygiene: [],
   };
+
+  const hygieneItems: HygieneItem[] = [
+    { id: "h1", name: "Book dentist", project_id: "project-cf", project_name: "Corporate Finance" },
+    { id: "h2", name: "Outline talk", project_id: "project-x", project_name: null },
+    { id: "h3", name: "Refactor notes", project_id: null, project_name: null },
+  ];
+
+  const assignableProjects = [
+    { id: "project-cf", name: "Corporate Finance" },
+    { id: "project-os", name: "Life OS" },
+  ];
 
   beforeEach(() => {
     vi.clearAllMocks();
     fetchLookBackAction.mockResolvedValue({ ok: true, summary });
     updateTaskAction.mockResolvedValue({ ok: true });
+    fetchCleanUpAction.mockResolvedValue({ ok: true, summary: cleanUpSummary });
+    fetchAssignableProjectsAction.mockResolvedValue({ ok: true, projects: assignableProjects });
   });
 
   async function renderCleanUpBoard(
@@ -611,6 +633,236 @@ describe("Clean Up queue", () => {
     expect(screen.getByText("Finish case study")).toBeTruthy();
     expect(screen.queryByText("Complete")).toBeNull();
     expect(screen.queryByText("Reschedule")).toBeNull();
+  });
+
+  it("renders the hygiene queue beneath unresolved work", async () => {
+    await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: hygieneItems } });
+
+    expect(screen.getByText("System hygiene")).toBeTruthy();
+    expect(screen.getByText(/Missing metadata alone is not an error/)).toBeTruthy();
+    expect(screen.getAllByText("No time anchor").length).toBe(3);
+    expect(screen.getAllByText("No scheduled or due date").length).toBe(3);
+    expect(screen.getByText("Book dentist")).toBeTruthy();
+  });
+
+  it("distinguishes known, unknown, and missing projects on hygiene rows", async () => {
+    await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: hygieneItems } });
+
+    // Known project: a link named by the project (also on the unresolved row).
+    expect(screen.getAllByText("Corporate Finance").length).toBe(2);
+    // Unknown: a set id whose name lookup failed.
+    expect(screen.getByText("Project could not be loaded")).toBeTruthy();
+    // Missing: no project at all, stated neutrally.
+    expect(screen.getAllByText("No project").length).toBe(1);
+  });
+
+  it("separates an empty hygiene queue from a failed hygiene read", async () => {
+    await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: [] } });
+    expect(screen.getByText("No floating tasks right now.")).toBeTruthy();
+
+    cleanup();
+
+    await renderCleanUpBoard({
+      ok: true,
+      summary: {
+        ...cleanUpSummary,
+        statuses: [
+          { name: "Notion", ok: true, error: null },
+          { name: "Notion hygiene", ok: false, error: "network down" },
+        ],
+      },
+    });
+    // The unresolved queue is intact; only the hygiene read failed.
+    expect(screen.getByText("Finish case study")).toBeTruthy();
+    expect(screen.getByText("The hygiene queue could not be read.")).toBeTruthy();
+    expect(screen.getByText(/Notion hygiene is unavailable/)).toBeTruthy();
+  });
+
+  it("processes a hygiene task with only the changed fields and refetches", async () => {
+    const user = userEvent.setup();
+    await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: hygieneItems } });
+
+    // Three hygiene rows render three Process buttons; the first opens h1.
+    await user.click(screen.getAllByText("Process")[0]);
+    const dialog = screen.getByRole("dialog", { name: "Process task" });
+    expect(within(dialog).getByText(/Fields left empty stay as they are/)).toBeTruthy();
+
+    fireEvent.change(within(dialog).getByLabelText("Scheduled"), { target: { value: "2026-09-16" } });
+    await waitFor(() => expect(screen.queryByText("Loading projects…")).toBeNull());
+    await user.selectOptions(within(dialog).getByLabelText("Project"), "project-os");
+    await user.click(within(dialog).getByText("Save"));
+
+    expect(updateTaskAction).toHaveBeenCalledWith("h1", { scheduled: "2026-09-16", project_id: "project-os" });
+    await waitFor(() => expect(fetchCleanUpAction).toHaveBeenCalledWith("2026-09-14"));
+    expect(screen.queryByRole("dialog", { name: "Process task" })).toBeNull();
+  });
+
+  it("keeps the dialog open with entered values when processing fails", async () => {
+    const user = userEvent.setup();
+    updateTaskAction.mockResolvedValue({ ok: false, error: "Notion could not be reached." });
+    await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: hygieneItems } });
+
+    // Three hygiene rows render three Process buttons; the first opens h1.
+    await user.click(screen.getAllByText("Process")[0]);
+    const dialog = screen.getByRole("dialog", { name: "Process task" });
+    fireEvent.change(within(dialog).getByLabelText("Due"), { target: { value: "2026-09-24" } });
+    await waitFor(() => expect(screen.queryByText("Loading projects…")).toBeNull());
+    await user.click(within(dialog).getByText("Save"));
+
+    expect(await screen.findByText("Notion could not be reached.")).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Process task" })).toBeTruthy();
+    expect((within(dialog).getByLabelText("Due") as HTMLInputElement).value).toBe("2026-09-24");
+  });
+
+  it("closes without a write when nothing changed", async () => {
+    const user = userEvent.setup();
+    await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: hygieneItems } });
+
+    // Three hygiene rows render three Process buttons; the first opens h1.
+    await user.click(screen.getAllByText("Process")[0]);
+    const dialog = screen.getByRole("dialog", { name: "Process task" });
+    await waitFor(() => expect(screen.queryByText("Loading projects…")).toBeNull());
+    await user.click(within(dialog).getByText("Save"));
+
+    expect(updateTaskAction).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: "Process task" })).toBeNull();
+  });
+
+  it("cancelling processing performs no write", async () => {
+    const user = userEvent.setup();
+    await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: hygieneItems } });
+
+    // Three hygiene rows render three Process buttons; the first opens h1.
+    await user.click(screen.getAllByText("Process")[0]);
+    const dialog = screen.getByRole("dialog", { name: "Process task" });
+    fireEvent.change(within(dialog).getByLabelText("Scheduled"), { target: { value: "2026-09-16" } });
+    await user.click(within(dialog).getByText("Cancel"));
+
+    expect(updateTaskAction).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: "Process task" })).toBeNull();
+  });
+
+  it("hides hygiene controls on a completed review", async () => {
+    const user = userEvent.setup();
+    render(
+      <ReviewBoard
+        initialReview={completed}
+        history={[]}
+        cleanUp={{ ok: true, summary: { ...cleanUpSummary, hygiene: hygieneItems } }}
+      />,
+    );
+    const expandButtons = screen.getAllByText("Expand");
+    await user.click(expandButtons[0]);
+
+    expect(screen.getByText("Book dentist")).toBeTruthy();
+    expect(screen.queryByText("Process")).toBeNull();
+  });
+
+  it("distinguishes a failed projects read from a genuinely empty list", async () => {
+    const user = userEvent.setup();
+    // A failed read is not an empty list: the hint says so.
+    fetchAssignableProjectsAction.mockResolvedValue({ ok: false, error: "network down" });
+    await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: [hygieneItems[2]] } });
+
+    await user.click(screen.getByText("Process"));
+    await waitFor(() => expect(screen.queryByText("Loading projects…")).toBeNull());
+    expect(
+      screen.getByText("Assignable projects could not be listed; the link can be set later."),
+    ).toBeTruthy();
+
+    cleanup();
+
+    // Zero Active/Planned projects is success, not failure: a neutral
+    // hint, never a false "could not be listed".
+    fetchAssignableProjectsAction.mockResolvedValue({ ok: true, projects: [] });
+    await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: [hygieneItems[2]] } });
+
+    await user.click(screen.getByText("Process"));
+    await waitFor(() => expect(screen.queryByText("Loading projects…")).toBeNull());
+    expect(screen.getByText("No Active or Planned projects right now.")).toBeTruthy();
+    expect(screen.queryByText(/could not be listed/)).toBeNull();
+  });
+
+  it("lists assignable projects by name, not raw id", async () => {
+    const user = userEvent.setup();
+    await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: [hygieneItems[2]] } });
+
+    await user.click(screen.getByText("Process"));
+    const dialog = screen.getByRole("dialog", { name: "Process task" });
+    await waitFor(() => expect(screen.queryByText("Loading projects…")).toBeNull());
+    expect(within(dialog).getByRole("option", { name: "Life OS" })).toBeTruthy();
+    expect(within(dialog).queryByText("project-os")).toBeNull();
+  });
+
+  it("shares one in-flight projects read across rapid dialog reopens", async () => {
+    const user = userEvent.setup();
+    let resolveFetch: (value: { ok: true; projects: typeof assignableProjects }) => void = () => {};
+    fetchAssignableProjectsAction.mockImplementation(
+      () =>
+        new Promise<{ ok: true; projects: typeof assignableProjects }>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: [hygieneItems[2]] } });
+
+    await user.click(screen.getByText("Process"));
+    await user.click(within(screen.getByRole("dialog", { name: "Process task" })).getByText("Cancel"));
+    await user.click(screen.getByText("Process"));
+
+    // The reopened dialog reuses the first request instead of stacking
+    // a duplicate read behind the same wide timeout.
+    expect(fetchAssignableProjectsAction).toHaveBeenCalledTimes(1);
+
+    resolveFetch({ ok: true, projects: assignableProjects });
+    expect(await screen.findByRole("option", { name: "Life OS" })).toBeTruthy();
+  });
+
+  it("retries a failed projects read on the next dialog open", async () => {
+    const user = userEvent.setup();
+    fetchAssignableProjectsAction.mockResolvedValueOnce({ ok: false, error: "network down" });
+    await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: [hygieneItems[2]] } });
+
+    await user.click(screen.getByText("Process"));
+    await waitFor(() => expect(screen.queryByText("Loading projects…")).toBeNull());
+    expect(screen.getByText(/could not be listed/)).toBeTruthy();
+
+    // The failed read is not pinned: reopening refetches and succeeds.
+    await user.click(within(screen.getByRole("dialog", { name: "Process task" })).getByText("Cancel"));
+    await user.click(screen.getByText("Process"));
+    expect(await screen.findByRole("option", { name: "Life OS" })).toBeTruthy();
+    expect(screen.queryByText(/could not be listed/)).toBeNull();
+  });
+
+  it("keeps the reschedule dialog open when Escape fires during a pending save", async () => {
+    const user = userEvent.setup();
+    // A save that never settles keeps the dialog pending.
+    updateTaskAction.mockImplementation(() => new Promise(() => {}));
+    await renderCleanUpBoard();
+
+    await user.click(screen.getAllByText("Reschedule")[0]);
+    const dialog = screen.getByRole("dialog", { name: "Reschedule task" });
+    fireEvent.change(within(dialog).getByLabelText("Scheduled"), { target: { value: "2026-09-29" } });
+    await user.click(within(dialog).getByText("Save"));
+
+    fireEvent(dialog, new Event("cancel", { cancelable: true }));
+
+    // The picked date is not lost to Escape while the write is in flight.
+    expect(screen.getByRole("dialog", { name: "Reschedule task" })).toBeTruthy();
+    expect((within(dialog).getByLabelText("Scheduled") as HTMLInputElement).value).toBe("2026-09-29");
+  });
+
+  it("keeps the dialog open when the browser fires a close event", async () => {
+    // The unmount cleanup calls close(), which fires a close event; an
+    // onClose handler on the dialog would turn that into an instant
+    // unmount right after mount (twice over under StrictMode).
+    const user = userEvent.setup();
+    await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: hygieneItems } });
+
+    await user.click(screen.getAllByText("Process")[0]);
+    const dialog = screen.getByRole("dialog", { name: "Process task" });
+    fireEvent(dialog, new Event("close"));
+
+    expect(screen.getByRole("dialog", { name: "Process task" })).toBeTruthy();
   });
 });
 

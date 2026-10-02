@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 
 import type { Task } from "./actions";
 import { updateTask } from "./actions";
 import { useDashboardOperations } from "./dashboard";
+import { ModalDialog } from "./modal-dialog";
 import { useTaskCompletion } from "./task-completion";
 
 export function TaskEditPanel({
@@ -42,15 +43,6 @@ export function TaskEditPanel({
   const blocked = pending || isRefreshing || capturePending || completionPending;
   const nameBlank = name.trim().length === 0;
   const saveDisabled = blocked || nameBlank;
-
-  const dialogRef = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    dialog.showModal();
-    return () => dialog.close();
-  }, []);
 
   // The existing value has a time (e.g. 2026-09-17T10:30): saving a picked
   // date converts it to date-only. Surface that explicitly, never silently.
@@ -102,14 +94,10 @@ export function TaskEditPanel({
   }
 
   return (
-    <dialog
-      ref={dialogRef}
+    <ModalDialog
       className="task-edit-dialog"
-      aria-labelledby={`${formId}-heading`}
-      onCancel={(event) => {
-        event.preventDefault();
-        close();
-      }}
+      ariaLabelledBy={`${formId}-heading`}
+      onClose={close}
     >
       <div className="task-edit-body">
         <div className="task-edit-heading">
@@ -247,6 +235,6 @@ export function TaskEditPanel({
           </div>
         </form>
       </div>
-    </dialog>
+    </ModalDialog>
   );
 }

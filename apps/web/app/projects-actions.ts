@@ -111,3 +111,44 @@ export async function updateProject(
   const saved = result.data as { goal_link_error?: string };
   return { ok: true, goalLinkError: saved.goal_link_error };
 }
+
+export type AssignableProject = { id: string; name: string | null };
+
+export type AssignableProjectsResult =
+  | { ok: true; projects: AssignableProject[] }
+  | { ok: false; error: string };
+
+/** Active/Planned projects for the hygiene queue's assignment picker.
+ * The envelope keeps a failed or unconfigured read distinct from a
+ * genuinely empty list, so the picker never reports a false failure when
+ * the user simply has no Active or Planned projects. */
+export async function fetchAssignableProjects(): Promise<AssignableProjectsResult> {
+  const base = process.env.LIFE_OS_API_URL ?? null;
+  if (!base) {
+    return {
+      ok: false,
+      error: "The connection to the local Life OS service is not configured.",
+    };
+  }
+  try {
+    const response = await fetch(`${base}/projects/assignable`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) {
+      return { ok: false, error: "Assignable projects could not be read." };
+    }
+    const data = (await response.json()) as { id?: string; name?: string }[];
+    if (!Array.isArray(data)) {
+      return { ok: false, error: "Assignable projects could not be read." };
+    }
+    return {
+      ok: true,
+      projects: data
+        .filter((project) => typeof project.id === "string")
+        .map((project) => ({ id: project.id as string, name: project.name ?? null })),
+    };
+  } catch {
+    return { ok: false, error: "The Life OS service could not be reached." };
+  }
+}

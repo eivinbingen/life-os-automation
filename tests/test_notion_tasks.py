@@ -374,3 +374,82 @@ def test_done_tasks_day_fetch_uses_exact_scheduled_day(monkeypatch):
         "secret", "tasks", date(2026, 9, 16), date(2026, 9, 16), 100
     )
     assert {"property": "Scheduled", "date": {"equals": "2026-09-16"}} in bodies[0]["filter"]["and"]
+
+
+def test_floating_tasks_filter_requires_incomplete_and_empty_dates(monkeypatch):
+    from copy import deepcopy
+
+    bodies = []
+
+    def floating_task(task_id: str, project_id: str | None):
+        page = notion_task(task_id, project_id)
+        # The floating predicate is enforced by the filter; the page mirrors
+        # what that filter returns: no Scheduled, no Due.
+        page["properties"]["Scheduled"] = {"date": None}
+        return page
+
+    def post(**kwargs):
+        bodies.append(deepcopy(kwargs["json"]))
+        return FakeResponse(
+            {
+                "results": [
+                    floating_task("one", None),
+                    floating_task("two", "project-1"),
+                ],
+                "has_more": False,
+            }
+        )
+
+    def get_project(**kwargs):
+        return FakeResponse(
+            {
+                "properties": {
+                    "Project name": {"type": "title", "title": [{"plain_text": "Life OS"}]}
+                }
+            }
+        )
+
+    monkeypatch.setattr(notion_tasks.requests, "post", post)
+    monkeypatch.setattr(notion_tasks.requests, "get", get_project)
+
+    result = notion_tasks.fetch_floating_tasks(
+        token="secret", data_source_id="tasks", page_size=100
+    )
+
+    # A single AND of three clauses: incomplete, no Scheduled, no Due.
+    query = bodies[0]["filter"]
+    assert "or" not in query
+    assert query == {
+        "and": [
+            {"property": "Done", "checkbox": {"equals": False}},
+            {"property": "Scheduled", "date": {"is_empty": True}},
+            {"property": "Due", "date": {"is_empty": True}},
+        ]
+    }
+    assert sorted(task.id for task in result.tasks) == ["one", "two"]
+    # Project names resolve so rows distinguish unknown lookups from missing.
+    assert result.tasks[1].project_name == "Life OS"
+    assert result.warnings == []
+
+
+def test_update_task_writes_project_relation_and_clears(monkeypatch):
+    patch_requests = []
+
+    def patch(**kwargs):
+        patch_requests.append(kwargs)
+        return FakeResponse({"id": "task-1", "properties": {}})
+
+    monkeypatch.setattr(notion_tasks.requests, "patch", patch)
+
+    # Assign: the single-valued relation is written directly.
+    assert notion_tasks.update_task(
+        token="secret", task_id="task-1", update=TaskUpdate(project_id="p1")
+    )
+    body = patch_requests[0]["json"]["properties"]
+    assert body == {"Project": {"relation": [{"id": "p1"}]}}
+
+    # Clear: an explicit null empties the relation array.
+    assert notion_tasks.update_task(
+        token="secret", task_id="task-1", update=TaskUpdate(project_id=None)
+    )
+    assert patch_requests[1]["json"]["properties"] == {"Project": {"relation": []}}

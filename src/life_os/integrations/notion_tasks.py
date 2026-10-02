@@ -14,39 +14,6 @@ from life_os.integrations.notion_common import (
 from life_os.models.notion import UNSET, Task, TaskCreate, TaskFetchResult, TaskUpdate
 
 
-def fetch_active_projects(token: str, data_source_id: str, page_size: int) -> list[Task]:
-    """Fetch projects with the Notion-defined Active status (read-only).
-
-    Returns lightweight Task-shaped entries (id + name) reused as evidence
-    for project activity. Bounded by page_size pagination.
-    """
-
-    projects: list[Task] = {}
-    body = {
-        "filter": {"property": "Status", "status": {"equals": "Active"}},
-        "page_size": page_size,
-    }
-    while True:
-        res = requests.post(
-            url=f"{NOTION_API_URL}/data_sources/{data_source_id}/query",
-            headers=_headers(token),
-            json=body,
-        )
-        res.raise_for_status()
-        data = res.json()
-        for page in data["results"]:
-            props = page["properties"]
-            name = "".join(
-                part.get("plain_text", "") for part in props.get("Name", {}).get("title", [])
-            )
-            project = Task(id=page["id"], name=name)
-            projects.setdefault(project.id, project)
-        if not data["has_more"]:
-            break
-        body["start_cursor"] = data["next_cursor"]
-    return list(projects.values())
-
-
 def _fetch_project_name(token: str, project_id: str) -> str | None:
     return fetch_page_title(token, project_id)
 
@@ -171,6 +138,45 @@ def fetch_done_tasks_for_range(
     return _resolve_project_names(token, list(tasks.values()))
 
 
+def fetch_floating_tasks(token: str, data_source_id: str, page_size: int) -> TaskFetchResult:
+    """Fetch incomplete tasks with neither a Scheduled nor a Due date.
+
+    A narrow read for the Weekly Review hygiene queue (#29): the derived
+    Needs-Processing predicate is "no time anchor" (docs/notion-tasks-schema.md).
+    The single AND of three clauses stays within Notion's two
+    compound-filter levels, unlike fetch_tasks_for_range's OR of ANDs.
+    Project names are resolved so rows distinguish unknown lookups from
+    missing data.
+    """
+
+    body = {
+        "filter": {
+            "and": [
+                {"property": "Done", "checkbox": {"equals": False}},
+                {"property": "Scheduled", "date": {"is_empty": True}},
+                {"property": "Due", "date": {"is_empty": True}},
+            ]
+        },
+        "page_size": page_size,
+    }
+    tasks = {}
+    while True:
+        res = requests.post(
+            url=f"{NOTION_API_URL}/data_sources/{data_source_id}/query",
+            headers=_headers(token),
+            json=body,
+        )
+        res.raise_for_status()
+        data = res.json()
+        for page in data["results"]:
+            task = _task_from_page(page)
+            tasks.setdefault(task.id, task)
+        if not data["has_more"]:
+            break
+        body["start_cursor"] = data["next_cursor"]
+    return _resolve_project_names(token, list(tasks.values()))
+
+
 def _resolve_project_names(token: str, tasks: list[Task]) -> TaskFetchResult:
     project_names: dict[str, str | None] = {}
     failed_lookups = 0
@@ -224,6 +230,13 @@ def update_task(token: str, task_id: str, update: TaskUpdate, done: bool | None 
             properties["Due"] = {"date": None}
         else:
             properties["Due"] = {"date": {"start": update.due.isoformat()}}
+    if update.project_id is not UNSET:
+        # The task-side Project relation is single-valued and a PATCH replaces
+        # the whole array, so a direct write needs no read-modify-write.
+        if update.project_id is None:
+            properties["Project"] = {"relation": []}
+        else:
+            properties["Project"] = {"relation": [{"id": update.project_id}]}
 
     body = {"properties": properties}
 

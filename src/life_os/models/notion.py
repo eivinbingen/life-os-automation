@@ -44,6 +44,7 @@ class TaskUpdate:
     name: str | None | _Unset = UNSET
     scheduled: date | None | _Unset = UNSET
     due: date | None | _Unset = UNSET
+    project_id: str | None | _Unset = UNSET
 
 
 @dataclass

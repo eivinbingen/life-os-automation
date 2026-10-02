@@ -31,8 +31,9 @@ overview (`#10`) normalizes.
   courses database. The adapter reads it as `Task.course_id` (optional)
   and joins upcoming tasks to courses by that id — the course-side
   `✅ Tasks` relation is not consulted.
-- `Projects` has `Status` (status) and `Courses`/`Tasks` relations; the
-  existing `fetch_active_projects` pattern remains for Finance/evidence.
+- `Projects` has `Status` (status) and `Courses`/`Tasks` relations;
+  Status-filtered Projects reads follow the `fetch_assignable_projects`
+  pattern (`docs/notion-tasks-schema.md`).
 
 ## Upcoming work assembly
 

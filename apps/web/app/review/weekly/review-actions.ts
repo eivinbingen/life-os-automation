@@ -226,6 +226,13 @@ export type CleanUpItem = {
   scheduled_in_week: boolean;
 };
 
+export type HygieneItem = {
+  id: string;
+  name: string;
+  project_id: string | null;
+  project_name: string | null;
+};
+
 export type CleanUpSummary = {
   week_start: string;
   week_end: string;
@@ -233,6 +240,7 @@ export type CleanUpSummary = {
   timezone: string;
   captured_at: string;
   items: CleanUpItem[];
+  hygiene: HygieneItem[];
   statuses: { name: string; ok: boolean; error: string | null }[];
   warnings: string[];
 };
@@ -249,7 +257,10 @@ export async function fetchCleanUp(
       `${base}/reviews/weekly/clean-up?week_start=${encodeURIComponent(weekStart)}`,
       {
         cache: "no-store",
-        signal: AbortSignal.timeout(10_000),
+        // The endpoint reads the unresolved queue and the hygiene queue
+        // (paginated, with per-project title lookups); a short budget
+        // would blame a healthy backend for a busy read.
+        signal: AbortSignal.timeout(30_000),
       },
     );
     if (!response.ok) {
