@@ -58,8 +58,8 @@ is Europe/Zurich. The exact lifecycle, retry and backup/restore contracts are in
 ## Notion transition
 
 The user already operates without Notion dashboards. Migration is the next planned
-milestone after the remaining Today and Weekly Review gaps; another two-week
-Notion-free trial and full Studies v2 are not prerequisites.
+milestone after the now-merged Weekly Review hygiene slice. Today #19/#20, another
+two-week Notion-free trial, and full Studies v2 are not prerequisites.
 
 The agreed starting stack is SQLite, synchronous SQLAlchemy, and Alembic. Keep
 storage behind repository boundaries and separate database models from API models.
@@ -69,9 +69,10 @@ ignored paths. These are planned decisions, not shipped database behavior.
 
 [#60](https://github.com/eivinbingen/life-os-automation/issues/60) records the native
 relationships, statuses/dates, selective import, safety decisions, and remaining
-questions. [The roadmap](roadmap.md#next-native-backend) owns sequencing.
-Eivin writes the foundation in #61 with coaching. Migration implementation waits
-until the current gaps are finished.
+questions. [The roadmap](roadmap.md#next-native-backend) owns sequencing. The
+[source inventory](native-migration-inventory.md) records concrete import gaps.
+Eivin writes the foundation in #61 with coaching; it is the next slice. Exact
+import and cutover/recovery mechanics belong to #62/#64.
 
 Selectively migrate active/planned direction and unfinished work after reviewing
 conflicts/stale records; do not import every completed task or Notion page body.

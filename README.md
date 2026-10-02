@@ -55,7 +55,7 @@ Today reads Calendar and Notion, supports refresh/capture, and writes task name,
 Open `/review/weekly` or choose Weekly Review in the sidebar. Look Back, Clean Up,
 Direction, Ahead and Complete support saved drafts and read-only completed history.
 `/weekly` redirects here; it is no longer a separate read-only product.
-Metadata hygiene #29 is still a pending slice at this documentation audit.
+Metadata hygiene #29 is implemented; native integration must preserve its queue/actions.
 
 Look Back labels its evidence: current Notion tasks have no completion timestamp,
 so “tasks done” means tasks scheduled in the reviewed week and now done, not proven

@@ -18,6 +18,7 @@ change the current backend's behavior until implementation/cutover.
 | Review save/retry/backup contract | [Review recovery](weekly-review-v2.md#save-conflicts-and-recovery-contract) |
 | Notion goal/project/area adapter or import | [Dated schema evidence](notion-goals-schema.md) and current adapter |
 | Notion course adapter or import | [Dated course evidence](notion-courses-schema.md) and current adapter |
+| Source-to-native gaps and follow-up ownership | [Migration inventory](native-migration-inventory.md) |
 | Native migration decisions | Relevant section of [#60](https://github.com/eivinbingen/life-os-automation/issues/60) |
 | Frontend checks/conventions | [Frontend README](../apps/web/README.md), [frontend AGENTS.md](../apps/web/AGENTS.md), relevant bundled Next.js guide |
 
@@ -48,3 +49,10 @@ No useful document was deleted solely to reduce context. Historical source evide
 is still available, while issues and code resolve current requirements. This audit
 does not establish why earlier agents exhausted context: tool/app guidance, inherited
 chat history, repeated reads and large outputs may also contribute.
+
+## Design-finalization follow-up
+
+After PR #66 merged, #29 is delivered and Today #19/#20 are deferred rather than
+migration prerequisites. [The migration inventory](native-migration-inventory.md)
+verifies current code/detailed source evidence and assigns exact import/recovery
+work to #62/#64. The audit table above remains a record of its original baseline.

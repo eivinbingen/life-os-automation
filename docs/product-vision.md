@@ -34,7 +34,8 @@ a project. This motivates owning core data rather than extending Notion workarou
 
 Notion remains authoritative for tasks/projects/goals/areas/courses until deliberate
 cutover. The agreed destination is a native SQLite backend, with SQLAlchemy and
-Alembic, after the remaining Today/Weekly Review gaps. It supports clear inheritance
+Alembic, after Weekly Review hygiene (now merged). Today #19/#20 do not block it.
+It supports clear inheritance
 and direct task-to-goal links. Migration is selective; Notion becomes an archive.
 No permanent bidirectional synchronization is planned.
 
