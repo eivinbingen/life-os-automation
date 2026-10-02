@@ -499,7 +499,7 @@ describe("Clean Up queue", () => {
     fetchLookBackAction.mockResolvedValue({ ok: true, summary });
     updateTaskAction.mockResolvedValue({ ok: true });
     fetchCleanUpAction.mockResolvedValue({ ok: true, summary: cleanUpSummary });
-    fetchAssignableProjectsAction.mockResolvedValue(assignableProjects);
+    fetchAssignableProjectsAction.mockResolvedValue({ ok: true, projects: assignableProjects });
   });
 
   async function renderCleanUpBoard(
@@ -758,9 +758,10 @@ describe("Clean Up queue", () => {
     expect(screen.queryByText("Process")).toBeNull();
   });
 
-  it("hints when assignable projects could not be listed and otherwise shows names", async () => {
+  it("distinguishes a failed projects read from a genuinely empty list", async () => {
     const user = userEvent.setup();
-    fetchAssignableProjectsAction.mockResolvedValue([]);
+    // A failed read is not an empty list: the hint says so.
+    fetchAssignableProjectsAction.mockResolvedValue({ ok: false, error: "network down" });
     await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: [hygieneItems[2]] } });
 
     await user.click(screen.getByText("Process"));
@@ -771,7 +772,19 @@ describe("Clean Up queue", () => {
 
     cleanup();
 
-    fetchAssignableProjectsAction.mockResolvedValue(assignableProjects);
+    // Zero Active/Planned projects is success, not failure: a neutral
+    // hint, never a false "could not be listed".
+    fetchAssignableProjectsAction.mockResolvedValue({ ok: true, projects: [] });
+    await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: [hygieneItems[2]] } });
+
+    await user.click(screen.getByText("Process"));
+    await waitFor(() => expect(screen.queryByText("Loading projects…")).toBeNull());
+    expect(screen.getByText("No Active or Planned projects right now.")).toBeTruthy();
+    expect(screen.queryByText(/could not be listed/)).toBeNull();
+  });
+
+  it("lists assignable projects by name, not raw id", async () => {
+    const user = userEvent.setup();
     await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: [hygieneItems[2]] } });
 
     await user.click(screen.getByText("Process"));
@@ -779,6 +792,63 @@ describe("Clean Up queue", () => {
     await waitFor(() => expect(screen.queryByText("Loading projects…")).toBeNull());
     expect(within(dialog).getByRole("option", { name: "Life OS" })).toBeTruthy();
     expect(within(dialog).queryByText("project-os")).toBeNull();
+  });
+
+  it("shares one in-flight projects read across rapid dialog reopens", async () => {
+    const user = userEvent.setup();
+    let resolveFetch: (value: { ok: true; projects: typeof assignableProjects }) => void = () => {};
+    fetchAssignableProjectsAction.mockImplementation(
+      () =>
+        new Promise<{ ok: true; projects: typeof assignableProjects }>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: [hygieneItems[2]] } });
+
+    await user.click(screen.getByText("Process"));
+    await user.click(within(screen.getByRole("dialog", { name: "Process task" })).getByText("Cancel"));
+    await user.click(screen.getByText("Process"));
+
+    // The reopened dialog reuses the first request instead of stacking
+    // a duplicate read behind the same wide timeout.
+    expect(fetchAssignableProjectsAction).toHaveBeenCalledTimes(1);
+
+    resolveFetch({ ok: true, projects: assignableProjects });
+    expect(await screen.findByRole("option", { name: "Life OS" })).toBeTruthy();
+  });
+
+  it("retries a failed projects read on the next dialog open", async () => {
+    const user = userEvent.setup();
+    fetchAssignableProjectsAction.mockResolvedValueOnce({ ok: false, error: "network down" });
+    await renderCleanUpBoard({ ok: true, summary: { ...cleanUpSummary, hygiene: [hygieneItems[2]] } });
+
+    await user.click(screen.getByText("Process"));
+    await waitFor(() => expect(screen.queryByText("Loading projects…")).toBeNull());
+    expect(screen.getByText(/could not be listed/)).toBeTruthy();
+
+    // The failed read is not pinned: reopening refetches and succeeds.
+    await user.click(within(screen.getByRole("dialog", { name: "Process task" })).getByText("Cancel"));
+    await user.click(screen.getByText("Process"));
+    expect(await screen.findByRole("option", { name: "Life OS" })).toBeTruthy();
+    expect(screen.queryByText(/could not be listed/)).toBeNull();
+  });
+
+  it("keeps the reschedule dialog open when Escape fires during a pending save", async () => {
+    const user = userEvent.setup();
+    // A save that never settles keeps the dialog pending.
+    updateTaskAction.mockImplementation(() => new Promise(() => {}));
+    await renderCleanUpBoard();
+
+    await user.click(screen.getAllByText("Reschedule")[0]);
+    const dialog = screen.getByRole("dialog", { name: "Reschedule task" });
+    fireEvent.change(within(dialog).getByLabelText("Scheduled"), { target: { value: "2026-09-29" } });
+    await user.click(within(dialog).getByText("Save"));
+
+    fireEvent(dialog, new Event("cancel", { cancelable: true }));
+
+    // The picked date is not lost to Escape while the write is in flight.
+    expect(screen.getByRole("dialog", { name: "Reschedule task" })).toBeTruthy();
+    expect((within(dialog).getByLabelText("Scheduled") as HTMLInputElement).value).toBe("2026-09-29");
   });
 
   it("keeps the dialog open when the browser fires a close event", async () => {

@@ -85,6 +85,15 @@ class TaskUpdate(BaseModel):
             raise ValueError("Task name must not be blank")
         return value.strip() if value is not None else None
 
+    @field_validator("project_id")
+    @classmethod
+    def project_id_not_blank(cls, value: str | None) -> str | None:
+        # A blank id would be forwarded to Notion as a relation write and
+        # surface as a schema-blaming write error; reject it up front.
+        if value is not None and not value.strip():
+            raise ValueError("Project id must not be blank")
+        return value
+
     @model_validator(mode="after")
     def reject_clearing_nonclearable_fields(self) -> "TaskUpdate":
         if "name" in self.model_fields_set and self.name is None:

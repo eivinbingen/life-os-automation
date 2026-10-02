@@ -257,7 +257,10 @@ export async function fetchCleanUp(
       `${base}/reviews/weekly/clean-up?week_start=${encodeURIComponent(weekStart)}`,
       {
         cache: "no-store",
-        signal: AbortSignal.timeout(10_000),
+        // The endpoint reads the unresolved queue and the hygiene queue
+        // (paginated, with per-project title lookups); a short budget
+        // would blame a healthy backend for a busy read.
+        signal: AbortSignal.timeout(30_000),
       },
     );
     if (!response.ok) {

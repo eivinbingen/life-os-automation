@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -11,7 +11,9 @@ import {
 } from "../../date-utils";
 import { TaskProjectLink } from "../../task-project-link";
 import { GoalForm } from "../../goal-form";
+import { ModalDialog } from "../../modal-dialog";
 import { ProjectForm } from "../../project-form";
+import type { AssignableProjectsResult } from "../../projects-actions";
 import type {
   AheadItem,
   AheadSummary,
@@ -200,11 +202,13 @@ function CleanUpBody({
   const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null);
   const [rescheduleId, setRescheduleId] = useState<string | null>(null);
   const [processId, setProcessId] = useState<string | null>(null);
-  // null means the picker options have not been fetched yet; an empty list
-  // means they were fetched but could not be listed.
-  const [projectOptions, setProjectOptions] = useState<
-    { id: string; name: string | null }[] | null
-  >(null);
+  // null means the picker options have not been fetched yet; the envelope
+  // distinguishes a failed read from a genuinely empty list.
+  const [assignableProjects, setAssignableProjects] =
+    useState<AssignableProjectsResult | null>(null);
+  // Repeated opens share one in-flight request; a settled read clears it
+  // so the next open refetches instead of pinning a failure.
+  const assignableProjectsInFlight = useRef<Promise<AssignableProjectsResult> | null>(null);
 
   if (!live || !live.ok) {
     return (
@@ -272,13 +276,20 @@ function CleanUpBody({
   function openProcess(item: HygieneItem) {
     setActionError(null);
     setProcessId(item.id);
-    // The picker options load once on first open and stay cached; a failed
-    // read degrades to an empty list and the dialog shows its hint.
-    if (projectOptions === null) {
-      loadProjectsActions()
+    // A failed read is retried on the next open rather than pinned for
+    // the lifetime of the section; opens while a request is in flight
+    // share it instead of issuing duplicate reads.
+    if (assignableProjects === null || !assignableProjects.ok) {
+      assignableProjectsInFlight.current ??= loadProjectsActions()
         .then(({ fetchAssignableProjects }) => fetchAssignableProjects())
-        .then((options) => setProjectOptions(options))
-        .catch(() => setProjectOptions([]));
+        .catch(
+          (): AssignableProjectsResult => ({ ok: false, error: "Assignable projects could not be read." }),
+        )
+        .then((result) => {
+          assignableProjectsInFlight.current = null;
+          return result;
+        });
+      void assignableProjectsInFlight.current.then(setAssignableProjects);
     }
   }
 
@@ -454,7 +465,7 @@ function CleanUpBody({
                 {processId === item.id && (
                   <HygieneProcessDialog
                     item={item}
-                    projectOptions={projectOptions}
+                    assignableProjects={assignableProjects}
                     pending={pendingIds.has(item.id)}
                     onClose={() => setProcessId(null)}
                     onSave={(edits) => void runHygieneAction(item.id, edits)}
@@ -838,33 +849,16 @@ function CleanUpRescheduleDialog({
   onClose: () => void;
   onSave: (value: string) => void;
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
   const initial = item.scheduled?.slice(0, 10) ?? "";
   const [value, setValue] = useState(initial);
   const hadTime = Boolean(item.scheduled?.includes("T"));
 
-  // showModal() centers the dialog as a real modal with a backdrop; the
-  // open attribute alone would render it inline in the queue row.
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    dialog.showModal();
-    return () => dialog.close();
-  }, []);
-
   return (
-    <dialog
-      ref={dialogRef}
+    <ModalDialog
       className="capture-dialog"
-      onCancel={(event) => {
-        // Escape closes through React like the Cancel button, never
-        // natively: the unmount cleanup calls close(), which fires a
-        // close event, so an onClose handler here would unmount the
-        // dialog right after it mounted.
-        event.preventDefault();
-        onClose();
-      }}
-      aria-label="Reschedule task"
+      ariaLabel="Reschedule task"
+      closeDisabled={pending}
+      onClose={onClose}
     >
       <h3>Reschedule</h3>
       <p className="review-dates-inline">
@@ -888,11 +882,16 @@ function CleanUpRescheduleDialog({
         <button type="button" className="review-queue-complete" disabled={pending} onClick={() => onSave(value)}>
           {pending ? "Saving…" : "Save"}
         </button>
-        <button type="button" className="review-queue-confirm-no" onClick={onClose}>
+        <button
+          type="button"
+          className="review-queue-confirm-no"
+          disabled={pending}
+          onClick={onClose}
+        >
           Cancel
         </button>
       </div>
-    </dialog>
+    </ModalDialog>
   );
 }
 
@@ -902,13 +901,13 @@ function CleanUpRescheduleDialog({
  * without a write. */
 function HygieneProcessDialog({
   item,
-  projectOptions,
+  assignableProjects,
   pending,
   onClose,
   onSave,
 }: {
   item: HygieneItem;
-  projectOptions: { id: string; name: string | null }[] | null;
+  assignableProjects: AssignableProjectsResult | null;
   pending: boolean;
   onClose: () => void;
   onSave: (edits: {
@@ -921,20 +920,10 @@ function HygieneProcessDialog({
   const [scheduled, setScheduled] = useState("");
   const [due, setDue] = useState("");
   const [projectId, setProjectId] = useState(item.project_id ?? "");
-  const dialogRef = useRef<HTMLDialogElement>(null);
-
-  // showModal() centers the dialog as a real modal with a backdrop; the
-  // open attribute alone would render it inline in the queue row.
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    dialog.showModal();
-    return () => dialog.close();
-  }, []);
 
   // The seed project stays selectable even when the options read failed or
   // the project is not Active/Planned (the ProjectForm precedent).
-  const options = [...(projectOptions ?? [])];
+  const options = [...(assignableProjects?.ok ? assignableProjects.projects : [])];
   if (item.project_id && !options.some((option) => option.id === item.project_id)) {
     options.unshift({ id: item.project_id, name: item.project_name });
   }
@@ -952,19 +941,11 @@ function HygieneProcessDialog({
   }
 
   return (
-    <dialog
-      ref={dialogRef}
+    <ModalDialog
       className="capture-dialog"
-      onCancel={(event) => {
-        // Escape closes through React like the Cancel button, never
-        // natively: the unmount cleanup calls close(), which fires a
-        // close event, so an onClose handler here would unmount the
-        // dialog right after it mounted. Cancel is disabled while
-        // pending, so Escape matches it.
-        event.preventDefault();
-        if (!pending) onClose();
-      }}
-      aria-label="Process task"
+      ariaLabel="Process task"
+      closeDisabled={pending}
+      onClose={onClose}
     >
       <h3>Process task</h3>
       <p className="review-dates-inline">
@@ -994,7 +975,7 @@ function HygieneProcessDialog({
           className="capture-name task-edit-name"
           value={projectId}
           onChange={(event) => setProjectId(event.target.value)}
-          disabled={pending || projectOptions === null}
+          disabled={pending || assignableProjects === null}
         >
           <option value="">No project</option>
           {options.map((option) => (
@@ -1004,12 +985,14 @@ function HygieneProcessDialog({
           ))}
         </select>
       </label>
-      {projectOptions === null ? (
+      {assignableProjects === null ? (
         <p className="capture-hint">Loading projects…</p>
-      ) : options.length === 0 ? (
+      ) : !assignableProjects.ok ? (
         <p className="capture-hint">
           Assignable projects could not be listed; the link can be set later.
         </p>
+      ) : options.length === 0 ? (
+        <p className="capture-hint">No Active or Planned projects right now.</p>
       ) : null}
       <div className="review-queue-actions">
         <button type="button" className="review-queue-complete" disabled={pending} onClick={save}>
@@ -1024,7 +1007,7 @@ function HygieneProcessDialog({
           Cancel
         </button>
       </div>
-    </dialog>
+    </ModalDialog>
   );
 }
 

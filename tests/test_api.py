@@ -258,6 +258,27 @@ def test_update_task_rejects_null_name():
     assert response.status_code == 422
 
 
+def test_update_task_rejects_blank_project_id():
+    """A blank id would become a Notion relation write and surface as a
+    schema-blaming write error; it is rejected up front instead."""
+
+    def fetch_events(day):
+        return []
+
+    def fetch_tasks(day):
+        return []
+
+    def update(task_id, update, done):
+        return True
+
+    client = TestClient(create_app(fetch_events, fetch_tasks, update))
+
+    response = client.patch("/tasks/task-1", json={"project_id": "   "})
+
+    assert response.status_code == 422
+    assert "Project id must not be blank" in response.json()["detail"][0]["msg"]
+
+
 def test_update_task_rejects_null_done():
     """An explicit null done is rejected instead of silently dropped."""
 

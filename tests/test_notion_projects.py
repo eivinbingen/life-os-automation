@@ -121,11 +121,14 @@ def test_fetch_assignable_projects_filters_active_or_planned_and_dedupes(monkeyp
         bodies.append(deepcopy(kwargs["json"]))
         return FakeResponse(
             {
-                # A repeated id never produces a duplicate picker entry.
+                # A repeated id never produces a duplicate picker entry;
+                # an untitled page normalizes to None (page_title), never
+                # a blank picker label.
                 "results": [
                     project_page("p1", "Corporate Finance"),
                     project_page("p2", "Life OS"),
                     project_page("p1", "Corporate Finance"),
+                    {"id": "p3", "properties": {"Name": {"type": "title", "title": []}}},
                 ],
                 "has_more": False,
             }
@@ -147,4 +150,5 @@ def test_fetch_assignable_projects_filters_active_or_planned_and_dedupes(monkeyp
     assert [(p.id, p.name) for p in projects] == [
         ("p1", "Corporate Finance"),
         ("p2", "Life OS"),
+        ("p3", None),
     ]

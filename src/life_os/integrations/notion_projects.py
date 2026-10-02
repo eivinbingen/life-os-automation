@@ -2,6 +2,7 @@ import requests
 
 from life_os.integrations.notion_common import (
     NOTION_API_URL,
+    page_title,
 )
 from life_os.integrations.notion_common import (
     headers as _headers,
@@ -115,11 +116,9 @@ def fetch_assignable_projects(token: str, data_source_id: str, page_size: int) -
         res.raise_for_status()
         data = res.json()
         for page in data["results"]:
-            props = page["properties"]
-            name = "".join(
-                part.get("plain_text", "") for part in props.get("Name", {}).get("title", [])
-            )
-            projects.setdefault(page["id"], Task(id=page["id"], name=name))
+            # page_title normalizes an untitled page to None so the picker
+            # never renders a blank option label.
+            projects.setdefault(page["id"], Task(id=page["id"], name=page_title(page)))
         if not data["has_more"]:
             break
         body["start_cursor"] = data["next_cursor"]
